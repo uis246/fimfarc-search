@@ -44,10 +44,10 @@ struct target {
 };
 
 struct opcode {
-	char *text; //Pattern to search
-	struct target input; //List of ids for logic operation
+	struct stringview text; //Pattern to search
+	const struct target *input; //List of ids for logic operation
 	union {
-		struct target output; //Output list of ids
+		struct target *output; //Output list of ids
 		const char *outfile;
 	};
 	enum LogOp mode;
@@ -57,6 +57,11 @@ struct opcode {
 struct tchunk {
 	struct target targets[64];
 	struct tchunk *next;
+};
+
+struct ochunk {
+	struct opcode opcodes[64];
+	struct ochunk *next;
 };
 
 static size_t skipSpaces(const char *in, size_t left) {
@@ -69,19 +74,35 @@ static size_t skipSpaces(const char *in, size_t left) {
 	return 0;
 }
 
+inline static bool cmpstrview(const struct stringview *restrict a, const struct stringview *restrict b) {
+	if(a->length != b->length)
+		return false;
+	return memcmp(a->data, b->data, a->length) == 0;
+}
+
 #define chkEOF() {if(pos >= insize) {fprintf(stderr, "Unexpected EOF\n"); exit(-1);}}
-#define chkEOL() {if(indata[pos] == '\n') {fprintf(stderr, "Unexpected EOL\n"); exit(-1);}}
+#define chkEOL(n) {if(indata[pos + n] == '\n') {fprintf(stderr, "Unexpected EOL\n"); exit(-1);}}
 #define chkExists(name)
 #define chkNotExists(name) !chkExists(name)
-#define saveTarget(t) {size_t id = target_count%64; current->targets[id] = t; target_count++; if(!target_count%64) {current->next = malloc(sizeof(struct tchunk)); current = current->next; current->next = NULL;}}
+#define saveTarget(t) &current->targets[target_count%64]; {current->targets[target_count%64] = t; target_count++; if(!target_count%64) {current->next = malloc(sizeof(struct tchunk)); current = current->next; current->next = NULL;}}
+#define searchTarget(output, tarname) {struct tchunk *cur = &root; if(tarname.length)for(size_t i = 0; i < target_count;) {\
+		if(cmpstrview(&tarname, &cur->targets[i%64].name)){ output = &cur->targets[i%64]; break;}\
+	}}
+#define saveOpcode(t) {o_current->opcodes[opcode_count%64] = t; opcode_count++; if(!opcode_count%64) {o_current->next = malloc(sizeof(struct ochunk)); o_current = o_current->next; o_current->next = NULL;}}
+#define searchOpcode(output, targetptr) {struct ochunk *cur = &o_root; for(size_t i = 0; i < opcode_count;) {\
+		if(cur->opcodes[i%64].output == targetptr){ output = &cur->targets[i%64]; break;}\
+	}}
+
 
 void multisearch(const char *infile) {
 	//Load infile
 	char *indata;
 	size_t insize = readfile(infile, (void**)&indata), pos = 0;
-	size_t target_count = 0;
+	size_t target_count = 0, opcode_count = 0;
 	struct tchunk root;
+	struct ochunk o_root;
 	struct tchunk *current = &root;
+	struct ochunk *o_current = &o_root;
 	root.next = NULL;
 	//Parse infile
 	while(pos < insize) {
@@ -112,16 +133,18 @@ void multisearch(const char *infile) {
 			pos++;
 			continue;
 		}
+		chkEOF();
 		struct target ot = {0};
 		if (indata[pos] != '\n' && indata[pos] != '"') {
 			//target name
 			//TODO: It cannot start with '\'' or contain space or ':' or only digits
 			for(size_t i = 0; i < insize-pos; i++) {
 				//FIXME: unicode
-				chkEOF();
-				chkEOL();
+				//chkEOF();//EOF is impossible here
+				chkEOL(i);
 				//Skip until space
-				if(indata[pos + i] != ' ' && indata[pos + i] != '\t')
+				char c = indata[pos + i];
+				if(c != ' ' && c != '\t' && c != ':' && c != '=')
 					continue;
 				//save shit
 				ot.name.data = indata + pos;
@@ -132,18 +155,16 @@ void multisearch(const char *infile) {
 			//TODO: check if already exists
 	 		pos += skipSpaces(indata + pos, insize - pos);
 		}
+		chkEOF();
 		if(indata[pos] == '"') {
 			//path
 			pos++;
 			//TODO: check for relative paths
 			for(size_t i = 0; i < insize-pos; i++) {
 				//FIXME: unicode
-				chkEOF();
-				chkEOL();
+				//chkEOF();
+				chkEOL(i);
 				//Skip until quotes
-				if(indata[pos + i] == '\n') {
-					//error
-				}
 				if(indata[pos + i] != '"')
 					continue;
 				//save shit
@@ -155,20 +176,89 @@ void multisearch(const char *infile) {
 	 		pos += skipSpaces(indata + pos, insize - pos);
 		}
 		chkEOF();
-		chkEOL();
 		if(indata[pos] == ':') {
+			ot.read_only = false;
 			//Prepare opcode
 			pos++;
 	 		pos += skipSpaces(indata + pos, insize - pos);
+			struct opcode code;
+			chkEOF();
 			char c = indata[pos];
-			if(c == '"' || c == '\'') {
+			code.input = NULL;
+			if(c != '&' && c != '|' && c != '~' && c != '"' && c != '\'') {
+				//input target
+				struct stringview tar_in;
+				tar_in.data = &indata[pos];
+				tar_in.length = 0;
+				for(size_t i = 0; i < insize-pos; i++) {
+					//FIXME: unicode
+					//chkEOF();//EOF is impossible here
+					chkEOL(i);
+					//Skip until space
+					if(indata[pos + i] != ' ' && indata[pos + i] != '\t')
+						continue;
+					//save shit
+					tar_in.length = i;
+					pos += i;
+					break;
+				}
+	 			pos += skipSpaces(indata + pos, insize - pos);
+				chkEOF();
+				c = indata[pos];
+				//Search for target
+				searchTarget(code.input, tar_in);
 			}
-			abort();
+			if(c == '&' || c == '|' || c == '~') {
+				//logop
+				if(c == '&') {
+					if(!code.input) {
+						fprintf(stderr, "Logical and without another input at offset %zu\n", pos);
+						exit(-1);
+					}
+					code.mode = AND;
+				} else if(c == '|')
+					code.mode = OR;
+				else if(c == '~')
+					code.mode = REMOVE;
+				else {
+					fprintf(stderr, "Bad logic operator \"%c\" at %zu\n", c, pos);
+					exit(-1);
+				}
+
+				pos++;
+	 			pos += skipSpaces(indata + pos, insize - pos);
+				chkEOF();
+				c = indata[pos];
+			} else
+				code.mode = OR;
+			if(c == '"' || c == '\'') {
+				//search term
+				code.sens = c == '\'';
+				pos++;
+				chkEOF();
+				for(size_t i = 0; i < insize-pos; i++) {
+					//FIXME: unicode
+					//chkEOF();
+					chkEOL(i);
+					//Skip until quotes
+					if(indata[pos + i] != c)
+						continue;
+					//save shit
+					code.text.data = indata + pos;
+					code.text.length = i;
+					pos += i + 1;
+					break;
+				}
+	 			pos += skipSpaces(indata + pos, insize - pos);
+			} else
+				fprintf(stderr, "Search term not found at offset %zu\n", pos);
 			//Save target
-			saveTarget(ot);
+			code.output = saveTarget(ot);
 			//Save opcode
+			saveOpcode(code);
 		} else if (indata[pos] == '=') {
 			//Load file
+			ot.read_only = true;
 			pos++;
 			if(!ot.path.data) {
 				//Load path
@@ -182,9 +272,8 @@ void multisearch(const char *infile) {
 			ot.buf.length = ot.buf.size = readfile(path, (void**)&ot.buf.data);
 			if(!ot.buf.data)
 				exit(-1);
-			ot.read_only = true;
 			//Save target
-			saveTarget(ot);
+			(void)saveTarget(ot);
 		} else {
 			fprintf(stderr, "Unexpected symbol at offset %zu\n", pos);
 			exit(-1);
@@ -200,7 +289,7 @@ void multisearch(const char *infile) {
 		if(t->path.data)
 			printf("\"%.*s\"", t->path.length, t->path.data);
 		if(!t->read_only) {
-			abort();
+			printf(":");
 		} else
 			printf("=");
 		printf("\n");
@@ -208,8 +297,7 @@ void multisearch(const char *infile) {
 		if(!i%64)
 			current = current->next;
 	}
-	//Create tree
-	//Check for cyclic dependencies
+	//Create tree for multithreadig
 	
 	//Open archive
 	//Iterate over epub

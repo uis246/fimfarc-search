@@ -58,6 +58,6 @@ __attribute((packed)) struct story_tag_file {
 
 void builder();
 void search();
-size_t readfile(const char *path, void **ptr);
-void bufappend(struct stringbuf *buf, const void *data, const size_t size);
+size_t readfile(const char *restrict path, void *restrict *ptr);
+void bufappend(struct stringbuf *restrict buf, const void *restrict data, const size_t size);
 void multisearch(const char *infile);

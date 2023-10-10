@@ -184,7 +184,6 @@ void builder() {
 
 				value = json_get_string(s, NULL);
 				if(parser.state == Story && got_key) {
-					//printf("Key: %s\n", prev);
 					if(strcmp(prev, "title") == 0)
 						strtobuf(&parser.title, value);
 					prev[0]=0;
@@ -222,7 +221,6 @@ void builder() {
 					continue;
 				value = json_get_string(s, NULL);
 				if(parser.state == Story && got_key) {
-					//printf("Key: %s\n", prev);
 					if(strcmp(prev, "id") == 0) { 
 						uint32_t id = strtoul(value, NULL, 10);
 						//TODO: replace with assert?

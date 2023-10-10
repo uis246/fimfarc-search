@@ -187,7 +187,7 @@ static void unname(const void *in, size_t size) {
 	}
 }
 
-size_t readfile(const char *path, void **ptr) {
+size_t readfile(const char *restrict path, void *restrict*ptr) {
 	FILE *f;
 	void *buf;
 	size_t size;

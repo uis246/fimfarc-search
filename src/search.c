@@ -47,10 +47,10 @@ return 0;
 }
 
 //Return true if found pattern
-static bool checkFile(void *data, size_t size) {
+static bool checkFile(const void *data, size_t size, const char *text, bool sens) {
 	unzFile *story;
 	char *fname;
-	void *buf;
+	void *buf;// size_t bsize = 0;
 	int ret;
 	zlib_filefunc_def filefunc = { 0 };
 	ourmemory_t unzmem = {0};
@@ -74,7 +74,8 @@ static bool checkFile(void *data, size_t size) {
 		return false;
 	}
 
-	fname = malloc(1024);
+	//NOTE: alloca looks fine here, malloc is excessive
+	fname = alloca(1024);
 
 	for(uLong i = 0; i < info.number_entry; i++) {
 		unz_file_info finfo;
@@ -89,7 +90,7 @@ static bool checkFile(void *data, size_t size) {
 			dprintf(2, "Couldn't read file info, skipping\n");
 			continue;
 		}
-		len = strlen(fname);
+		len = strnlen(fname, 1024);
 		if (fname[len - 1] == '/') {
 			//It's a dir, skipping
 			ret = unzGoToNextFile(story);
@@ -99,6 +100,7 @@ static bool checkFile(void *data, size_t size) {
 		if (strcmp(fname + len - 5, ".html") == 0) {
 			//That's a chapter
 			//Read it
+			//TODO: reduce amount of mallocs
 			buf = malloc(finfo.uncompressed_size);
 			if (!buf) {
 				dprintf(2, "Failed to allocate memory\n");
@@ -118,10 +120,10 @@ static bool checkFile(void *data, size_t size) {
 					//Ok, now search
 					//Simple strstr enough?
 					char *sret;
-					if (search_args.sens)
-						sret = strcasestr(buf, search_args.text);
+					if (sens)
+						sret = strcasestr(buf, text);
 					else
-						sret = strstr(buf, search_args.text);
+						sret = strstr(buf, text);
 					if (sret != NULL) {
 						//FOUND!
 						goto found;
@@ -134,14 +136,14 @@ static bool checkFile(void *data, size_t size) {
 		ret = unzGoToNextFile(story);
 	}
 
-	free(fname);
+	//free(fname);//Not a malloc
 	unzClose(story);
 	return false;
 
 	found:
 	unzCloseCurrentFile(story);
 	free(buf);
-	free(fname);
+	//free(fname);//Not a malloc
 	unzClose(story);
 	return true;
 }
@@ -181,9 +183,10 @@ void search() {
 	
 	//Open mapping
 	//Open archive
-	archive = unzOpen(search_args.archive);
+	archive = unzOpen64(search_args.archive);
 	if (!archive) {
 		dprintf(2, "Failed to open archive file %s\n", search_args.archive);
+		perror("Error");
 		free(list);
 		return;
 	}
@@ -208,7 +211,7 @@ void search() {
 			dprintf(2, "Failed to read next file\n");
 			break;
 		}
-		ret = unzGetCurrentFileInfo(archive, &file_info, fname, 8192, NULL, 0, NULL, 0);
+		ret = unzGetCurrentFileInfo(archive, &file_info, fname, 4096, NULL, 0, NULL, 0);
 		if (ret != UNZ_OK) {
 			dprintf(2, "Couldn't read file info, skipping\n");
 			continue;
@@ -260,7 +263,7 @@ void search() {
 					dprintf(2, "Failed to read file from archive, skipping\n");
 				} else {
 					//Ok, now search
-					found = checkFile(buf, file_info.uncompressed_size);
+					found = checkFile(buf, file_info.uncompressed_size, search_args.text, search_args.sens);
 					if (found ^ (search_args.mode == REMOVE))
 						//Add to stories list
 						bufappend(&stories, &id, sizeof(id));
