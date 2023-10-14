@@ -1,10 +1,10 @@
 OPT_EXT = -Os -s -g0 -fno-unwind-tables
-OPT_INT = -O2 -ggdb3
-CFLAGS = -fno-stack-protector -fno-asynchronous-unwind-tables -fno-math-errno -fmerge-all-constants -fno-ident -pipe -fno-plt -mcpu=native -D_GNU_SOURCE -fvisibility=hidden -flto -fno-fat-lto-objects -DNDEBUG -mcpu=native -ffunction-sections -fdata-sections
+OPT_INT = -Ofast -ggdb3
+CFLAGS = -fno-stack-protector -fno-asynchronous-unwind-tables -fno-math-errno -fmerge-all-constants -fno-ident -pipe -fno-plt -D_GNU_SOURCE -fvisibility=hidden -flto -fno-fat-lto-objects -DNDEBUG -mcpu=native -ffunction-sections -fdata-sections -mtune=native -march=native
 CFLAGS_EXT = ${OPT_EXT} ${CFLAGS}
 CFLAGS_INT = ${OPT_INT} ${CFLAGS} -I pdjson -I minizip-mem -Wall -Wextra -Wno-switch
 LDFLAGS_NDEBUG = -Wl,--gc-sections,--as-needed
-LDFLAGS = -lminizip -Wl,-z,noseparate-code,-z,norelro
+LDFLAGS = -lminizip -Wl,-z,noseparate-code,-z,norelro ${LDFLAGS_NDEBUG}
 all: fimfar
 build:
 #@mkdir build

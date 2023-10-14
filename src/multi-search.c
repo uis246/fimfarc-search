@@ -33,6 +33,8 @@
 
 #include "fimfar.h"
 
+#include <minizip/unzip.h>
+
 #include <stdio.h>
 
 extern char *archive; //Path to archive
@@ -44,12 +46,10 @@ struct target {
 };
 
 struct opcode {
-	struct stringview text; //Pattern to search
+	//struct stringview text; //Pattern to search
+	const char *text; //Pattern to search
 	const struct target *input; //List of ids for logic operation
-	union {
-		struct target *output; //Output list of ids
-		const char *outfile;
-	};
+	struct target *output; //Output list of ids
 	enum LogOp mode;
 	bool sens; //Case-sensetiveness
 };
@@ -80,6 +80,27 @@ inline static bool cmpstrview(const struct stringview *restrict a, const struct 
 	return memcmp(a->data, b->data, a->length) == 0;
 }
 
+inline static bool bufSearch(const struct stringbuf *buf, const uint32_t id, const bool fast) {
+	uint32_t *list = (uint32_t*)buf->data;
+	size_t len = buf->length;
+	if(fast) {
+		for (size_t i = 0; i < len; i++) {
+			if(list[i] < id)
+				continue;
+			else if(list[i] == id)
+				return true;
+			else
+				break;
+		}
+		return false;
+	} else {
+		for (size_t i = 0; i < len; i++)
+			if (list[i] == id)
+				return true;
+		return false;
+	}
+}
+
 #define chkEOF() {if(pos >= insize) {fprintf(stderr, "Unexpected EOF\n"); exit(-1);}}
 #define chkEOL(n) {if(indata[pos + n] == '\n') {fprintf(stderr, "Unexpected EOL\n"); exit(-1);}}
 #define chkExists(name)
@@ -92,9 +113,11 @@ inline static bool cmpstrview(const struct stringview *restrict a, const struct 
 #define searchOpcode(output, targetptr) {struct ochunk *cur = &o_root; for(size_t i = 0; i < opcode_count;) {\
 		if(cur->opcodes[i%64].output == targetptr){ output = &cur->targets[i%64]; break;}\
 	}}
+#define searchInput(inTarget, storyid) bufSearch(&inTarget->buf, storyid, inTarget->read_only)
+#define addOutput(outTarget, storyid) {if(outTarget->read_only){dprintf(2, "Attempting to write read-only target\n"); abort();} bufappend(&outTarget->buf, &storyid, sizeof(storyid));}
 
 
-void multisearch(const char *infile) {
+void multisearch(const char *arch, const char *infile) {
 	//Load infile
 	char *indata;
 	size_t insize = readfile(infile, (void**)&indata), pos = 0;
@@ -133,7 +156,15 @@ void multisearch(const char *infile) {
 			pos++;
 			continue;
 		}
-		chkEOF();
+		if(indata[pos] == '#') {
+			//skip line
+			for(; pos<insize; pos++)
+				if(indata[pos] == '\n') {
+					pos++;
+					break;
+				}
+			continue;
+		}
 		struct target ot = {0};
 		if (indata[pos] != '\n' && indata[pos] != '"') {
 			//target name
@@ -233,7 +264,8 @@ void multisearch(const char *infile) {
 				code.mode = OR;
 			if(c == '"' || c == '\'') {
 				//search term
-				code.sens = c == '\'';
+				//TODO: sens is inverted
+				code.sens = c != '\'';
 				pos++;
 				chkEOF();
 				for(size_t i = 0; i < insize-pos; i++) {
@@ -244,8 +276,9 @@ void multisearch(const char *infile) {
 					if(indata[pos + i] != c)
 						continue;
 					//save shit
-					code.text.data = indata + pos;
-					code.text.length = i;
+					code.text = strndup(indata + pos, i);
+					//code.text.data = indata + pos;
+					//code.text.length = i;
 					pos += i + 1;
 					break;
 				}
@@ -300,12 +333,113 @@ void multisearch(const char *infile) {
 	//Create tree for multithreadig
 	
 	//Open archive
+	unzFile *archive;
+	//NOTE: no file mapping becase I have 32-bit systems
+	archive = unzOpen64(arch);
+	if (!archive) {
+		dprintf(2, "Failed to open archive file %s\n", arch);
+		goto freetree;
+	}
+	unz_global_info info;
+	if (unzGetGlobalInfo(archive, &info) != UNZ_OK) {
+		dprintf(2, "Failed to get archive global info\n");
+		goto freetree;
+	}
 	//Iterate over epub
+	char *fname = alloca(1024);
+	int ret = UNZ_OK;
+	for(uLong i = 0; i < info.number_entry; i++) {
+		unz_file_info file_info;
+		size_t len;
+		if (ret != UNZ_OK) {//unzGoToNextFile failed
+			dprintf(2, "Failed to read next file\n");
+			break;
+		}
+		ret = unzGetCurrentFileInfo(archive, &file_info, fname, 1024, NULL, 0, NULL, 0);
+		if (ret != UNZ_OK) {
+			dprintf(2, "Couldn't read file info, skipping\n");
+			continue;
+		}
+		len = strlen(fname);
+		if (fname[len - 1] == '/') {
+			//It's a dir, skipping
+			ret = unzGoToNextFile(archive);
+			continue;
+		}
+		if (strncmp(fname + len - 5, ".epub", 5) == 0) {
+			//That's a story
+			//Check in list
+			uint32_t id;
+			fname[len - 5] = 0;
+			id = strtoul(strrchr(fname, '-') + 1, NULL, 10);
+
+			o_current = &o_root;
+			void *buf = NULL;
+			for(size_t i = 0; i < opcode_count;) {
+				struct opcode *o = &o_current->opcodes[i%64];
+
+				//Do logic here
+				bool found = false;
+				if(o->input)
+					found = searchInput(o->input, id);
+				if(found && o->mode == OR) {
+					//add
+					addOutput(o->output, id);
+					goto cont;
+				} else if(!found && o->mode != OR) {
+					//skip
+					goto cont;
+				}
+				//search text
+				//Read file if needed
+				if(!buf) {
+					buf = malloc(file_info.uncompressed_size);
+					if (!buf) {
+						dprintf(2, "Failed to allocate memory\n");
+						exit(-1);
+					}
+					ret = unzOpenCurrentFile(archive);
+					if (ret != UNZ_OK) {
+						dprintf(2, "Failed to open file from archive, terminating\n");
+						abort();
+					} else {
+						//Read and search
+						ret = unzReadCurrentFile(archive, buf, file_info.uncompressed_size);
+						if (ret < 0) {
+							//Error
+							dprintf(2, "Failed to read file from archive, terminating\n");
+							abort();
+						}
+					}
+				}
+				//Ok, now search
+				found = checkFile(buf, file_info.uncompressed_size, o->text, o->sens);
+				if (found ^ (o->mode == REMOVE))
+					//Add to stories list
+					addOutput(o->output, id);
+				//
+
+				cont:
+				i++;
+				if(!i%64)
+					o_current = o_current->next;
+			}
+			if(buf)
+				unzCloseCurrentFile(archive);
+			free(buf);
+
+			//Next
+		}
+		ret = unzGoToNextFile(archive);
+	}
 	//	Iterate over tree
+	printf("Count: %zu\n", root.targets[0].buf.length);
 	
 	//Save results
 	
 	//Free memory
+	freetree:
+	freedata:
 	free(indata);
 	indata = NULL;
 	insize = 0;

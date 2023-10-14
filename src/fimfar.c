@@ -396,11 +396,11 @@ int main(int argc, char* argv[])
 		fclose(out);
 		free(stories.data);
 	} else if(args.mode == Multisearch) {
-		if(argc != 3) {
-			dprintf(2, "Usage: %s make MSFILE\n", argv[0]);
+		if(argc != 4) {
+			printf("Usage: %s make ARCHIVE MSFILE\n", argv[0]);
 			return -1;
 		}
-		multisearch(argv[2]);
+		multisearch(argv[2], argv[3]);
 	} else {
 		dprintf(2, "Tool %s is not implemented\n", argv[1]);
 		return -2;

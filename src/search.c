@@ -47,7 +47,7 @@ return 0;
 }
 
 //Return true if found pattern
-static bool checkFile(const void *data, size_t size, const char *text, bool sens) {
+bool checkFile(const void *data, size_t size, const char *text, bool sens) {
 	unzFile *story;
 	char *fname;
 	void *buf;// size_t bsize = 0;
@@ -161,7 +161,6 @@ void search() {
 	char *fname;
 	unzFile *archive;
 	void *buf;
-	int ret = UNZ_OK;//That's kinda fron unzGoToNextFile
 	if (!search_args.archive || !search_args.out || !search_args.text) {
 		dprintf(2, "You must specify patthern and paths to archive and output\n");
 		return;
@@ -180,9 +179,9 @@ void search() {
 	} else
 		//Listless mode
 		search_args.mode = OR;
-	
-	//Open mapping
+
 	//Open archive
+	//NOTE: no file mapping becase I have 32-bit systems
 	archive = unzOpen64(search_args.archive);
 	if (!archive) {
 		dprintf(2, "Failed to open archive file %s\n", search_args.archive);
@@ -193,17 +192,13 @@ void search() {
 	unz_global_info info;
 	if (unzGetGlobalInfo(archive, &info) != UNZ_OK) {
 		dprintf(2, "Failed to get archive global info\n");
-		//Should I close files?
-		//Or fuck it?
 		goto cancel;
-		unzClose(archive);
-		free(list);
-		return;
 	}
 	//Open output file
 	out = fopen(search_args.out, "wb");
 	//Search for listed files in archive
 	fname = malloc(4096);
+	int ret = UNZ_OK;//That's kinda from unzGoToNextFile
 	for(uLong i = 0; i < info.number_entry; i++) {
 		unz_file_info file_info;
 		size_t len;

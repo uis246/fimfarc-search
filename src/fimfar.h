@@ -60,4 +60,5 @@ void builder();
 void search();
 size_t readfile(const char *restrict path, void *restrict *ptr);
 void bufappend(struct stringbuf *restrict buf, const void *restrict data, const size_t size);
-void multisearch(const char *infile);
+void multisearch(const char *archive, const char *infile);
+bool checkFile(const void *data, size_t size, const char *text, bool sens);
