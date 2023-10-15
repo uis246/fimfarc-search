@@ -56,9 +56,23 @@ __attribute((packed)) struct story_tag_file {
 #define htof32(x) x
 #endif
 
+#ifdef __GNUC__
+#define unlikely(x) __builtin_expect(x, 0)
+#else
+#define unlikely(x) x
+#endif
+
+struct checkRq {
+	const char *text;
+	bool sens;
+
+	uint8_t ret;
+};
+
 void builder();
 void search();
 size_t readfile(const char *restrict path, void *restrict *ptr);
 void bufappend(struct stringbuf *restrict buf, const void *restrict data, const size_t size);
 void multisearch(const char *archive, const char *infile);
 bool checkFile(const void *data, size_t size, const char *text, bool sens);
+void checkFileMulti(const void *data, size_t size, struct checkRq *rqs, size_t amount);

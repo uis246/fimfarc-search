@@ -1,5 +1,5 @@
-OPT_EXT = -Os -s -g0 -fno-unwind-tables
-OPT_INT = -Ofast -ggdb3
+OPT_EXT = -Ofast -fsched-pressure -fsched-spec-load -s -g0 -fno-unwind-tables
+OPT_INT = -Ofast -ggdb3 -fsched-pressure -fsched-spec-load
 CFLAGS = -fno-stack-protector -fno-asynchronous-unwind-tables -fno-math-errno -fmerge-all-constants -fno-ident -pipe -fno-plt -D_GNU_SOURCE -fvisibility=hidden -flto -fno-fat-lto-objects -DNDEBUG -mcpu=native -ffunction-sections -fdata-sections -mtune=native -march=native
 CFLAGS_EXT = ${OPT_EXT} ${CFLAGS}
 CFLAGS_INT = ${OPT_INT} ${CFLAGS} -I pdjson -I minizip-mem -Wall -Wextra -Wno-switch

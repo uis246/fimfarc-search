@@ -51,6 +51,7 @@ struct opcode {
 	const struct target *input; //List of ids for logic operation
 	struct target *output; //Output list of ids
 	enum LogOp mode;
+	uint8_t depth;
 	bool sens; //Case-sensetiveness
 };
 
@@ -101,21 +102,29 @@ inline static bool bufSearch(const struct stringbuf *buf, const uint32_t id, con
 	}
 }
 
-#define chkEOF() {if(pos >= insize) {fprintf(stderr, "Unexpected EOF\n"); exit(-1);}}
-#define chkEOL(n) {if(indata[pos + n] == '\n') {fprintf(stderr, "Unexpected EOL\n"); exit(-1);}}
+#define chkEOF() {if(unlikely(pos >= insize)) {fprintf(stderr, "Unexpected EOF\n"); exit(-1);}}
+#define chkEOL(n) {if(unlikely(indata[pos + n] == '\n')) {fprintf(stderr, "Unexpected EOL\n"); exit(-1);}}
 #define chkExists(name)
 #define chkNotExists(name) !chkExists(name)
+//FIXME: check for null
 #define saveTarget(t) &current->targets[target_count%64]; {current->targets[target_count%64] = t; target_count++; if(!target_count%64) {current->next = malloc(sizeof(struct tchunk)); current = current->next; current->next = NULL;}}
 #define searchTarget(output, tarname) {struct tchunk *cur = &root; if(tarname.length)for(size_t i = 0; i < target_count;) {\
 		if(cmpstrview(&tarname, &cur->targets[i%64].name)){ output = &cur->targets[i%64]; break;}\
+		i++; if(!i%64) cur = cur->next;\
 	}}
+//FIXME: check for null
 #define saveOpcode(t) {o_current->opcodes[opcode_count%64] = t; opcode_count++; if(!opcode_count%64) {o_current->next = malloc(sizeof(struct ochunk)); o_current = o_current->next; o_current->next = NULL;}}
-#define searchOpcode(output, targetptr) {struct ochunk *cur = &o_root; for(size_t i = 0; i < opcode_count;) {\
+//FIXME: search appears to be broken
+//#define searchOpcode(output, targetptr) {struct ochunk *cur = &o_root; for(size_t i = 0; i < opcode_count;) {\
 		if(cur->opcodes[i%64].output == targetptr){ output = &cur->targets[i%64]; break;}\
 	}}
 #define searchInput(inTarget, storyid) bufSearch(&inTarget->buf, storyid, inTarget->read_only)
 #define addOutput(outTarget, storyid) {if(outTarget->read_only){dprintf(2, "Attempting to write read-only target\n"); abort();} bufappend(&outTarget->buf, &storyid, sizeof(storyid));}
 
+static int dep_sort(const void *a, const void *b) {
+	const struct opcode *A = a, *B = b;
+	return ((int)A->depth) - (int)B->depth;
+}
 
 void multisearch(const char *arch, const char *infile) {
 	//Load infile
@@ -216,6 +225,7 @@ void multisearch(const char *arch, const char *infile) {
 			chkEOF();
 			char c = indata[pos];
 			code.input = NULL;
+			code.depth = 0;
 			if(c != '&' && c != '|' && c != '~' && c != '"' && c != '\'') {
 				//input target
 				struct stringview tar_in;
@@ -330,7 +340,78 @@ void multisearch(const char *arch, const char *infile) {
 		if(!i%64)
 			current = current->next;
 	}
-	//Create tree for multithreadig
+	//Create waves for batching
+	struct opcode **BigOpcodeList;
+	struct waveinfo {
+		size_t amount;
+		struct opcode **op;//Array of pointers
+		struct checkRq *rqs;//Array of structs
+	} *waves;
+	BigOpcodeList = malloc(opcode_count * sizeof(struct opcode*));
+	if(BigOpcodeList == NULL) {
+		exit(-1);
+		dprintf(2, "Failed to allocate memory\n");
+		goto freeops;
+	}
+	o_current = &o_root;
+	size_t wave_count = 0;
+	for(size_t i = 0; i < opcode_count;) {
+		struct opcode *o = &o_current->opcodes[i%64];
+
+		struct ochunk *cur_dep = &o_root;
+		for(size_t j = 0; j < i;) {
+			if(cur_dep->opcodes[j%64].output == o->input){
+				//set dependency depth
+				o->depth = cur_dep->opcodes[j%64].depth + 1;
+				wave_count = o->depth > wave_count ? o->depth : wave_count;
+				break;
+			}
+			j++;
+			if(!j%64)
+				cur_dep = cur_dep->next;
+		}
+
+		BigOpcodeList[i] = o;
+		i++;
+		if(!i%64)
+			o_current = o_current->next;
+	}
+	wave_count++;
+	waves = malloc(wave_count * sizeof(*waves));
+	if(waves == NULL) {
+		free(BigOpcodeList);
+		exit(-1);
+		dprintf(2, "Failed to allocate memory\n");
+		goto freeops;
+	}
+	//Sort by depth
+	qsort(BigOpcodeList, opcode_count, sizeof(*BigOpcodeList), dep_sort);
+	//Create waves
+	for(size_t i = 0; i < opcode_count;) {
+		size_t added = 0;
+		struct opcode **tis = BigOpcodeList + i;
+		uint8_t depth = (*tis)->depth;
+		for(size_t j = i; j < opcode_count; j++) {
+			if(depth == (*(BigOpcodeList + j))->depth)
+				added++;
+		}
+		waves[depth].amount = added;
+		waves[depth].op = tis;
+		waves[depth].rqs = malloc(added * sizeof(struct checkRq));
+		if(waves[depth].rqs == NULL) {
+			free(BigOpcodeList);
+			free(waves);
+			for(size_t j = 0; j < depth; j++)
+				free(waves[j].rqs);
+			dprintf(2, "Failed to allocate memory\n");
+			goto freeops;
+		}
+		for(size_t j = 0; j < added; j++) {
+			waves[depth].rqs[j].text = (*(tis + j))->text;
+			waves[depth].rqs[j].sens = (*(tis + j))->sens;
+		}
+		i += added;
+	}
 	
 	//Open archive
 	unzFile *archive;
@@ -373,23 +454,38 @@ void multisearch(const char *arch, const char *infile) {
 			fname[len - 5] = 0;
 			id = strtoul(strrchr(fname, '-') + 1, NULL, 10);
 
-			o_current = &o_root;
+//			o_current = &o_root;
 			void *buf = NULL;
-			for(size_t i = 0; i < opcode_count;) {
-				struct opcode *o = &o_current->opcodes[i%64];
+			//Iterate over waves
+			for(size_t i = 0; i < wave_count;) {
+//				struct opcode *o = &o_current->opcodes[i%64];
+				struct waveinfo *wi = &waves[i];
 
 				//Do logic here
-				bool found = false;
-				if(o->input)
-					found = searchInput(o->input, id);
-				if(found && o->mode == OR) {
-					//add
-					addOutput(o->output, id);
-					goto cont;
-				} else if(!found && o->mode != OR) {
-					//skip
-					goto cont;
+				for(size_t k = 0; k < wi->amount; k++) {
+					bool found = false;
+					struct opcode *o = *(wi->op + k);
+					if(o->input)
+						found = searchInput(o->input, id);
+					if(found && o->mode == OR) {
+						//add
+						addOutput(o->output, id);
+						wi->rqs[k].ret = 2;//2 means skip
+					} else if(!found && o->mode != OR) {
+						//skip
+						wi->rqs[k].ret = 2;
+//						goto cont;
+					} else
+						wi->rqs[k].ret = 0;
 				}
+				bool skip = true;
+				for(size_t k = 0; k < wi->amount; k++)
+					if(wi->rqs[k].ret == 0) {
+						skip = false;
+						break;
+					}
+				if(skip)
+					goto cont;
 				//search text
 				//Read file if needed
 				if(!buf) {
@@ -413,16 +509,21 @@ void multisearch(const char *arch, const char *infile) {
 					}
 				}
 				//Ok, now search
-				found = checkFile(buf, file_info.uncompressed_size, o->text, o->sens);
-				if (found ^ (o->mode == REMOVE))
+				checkFileMulti(buf, file_info.uncompressed_size, wi->rqs, wi->amount);
+				for(size_t k = 0; k < wi->amount; k++)
+					if(wi->rqs[k].ret == 1 && !(wi->op[k]->mode == REMOVE)) {
+						addOutput(wi->op[k]->output, id);
+					}
+//				found = checkFile(buf, file_info.uncompressed_size, o->text, o->sens);
+//				if (found ^ (o->mode == REMOVE))
 					//Add to stories list
-					addOutput(o->output, id);
+//					addOutput(o->output, id);
 				//
 
 				cont:
 				i++;
-				if(!i%64)
-					o_current = o_current->next;
+//				if(!i%64)
+//					o_current = o_current->next;
 			}
 			if(buf)
 				unzCloseCurrentFile(archive);
@@ -432,14 +533,12 @@ void multisearch(const char *arch, const char *infile) {
 		}
 		ret = unzGoToNextFile(archive);
 	}
-	//	Iterate over tree
-	printf("Count: %zu\n", root.targets[0].buf.length);
 	
 	//Save results
 	
 	//Free memory
 	freetree:
-	freedata:
+	freeops:
 	free(indata);
 	indata = NULL;
 	insize = 0;

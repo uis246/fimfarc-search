@@ -46,8 +46,17 @@ switch (key) {
 return 0;
 }
 
+
+
 //Return true if found pattern
 bool checkFile(const void *data, size_t size, const char *text, bool sens) {
+	struct checkRq rq = {text, sens, false};
+	checkFileMulti(data, size, &rq, 1);
+	return rq.ret;
+}
+
+//Return true if found pattern
+void checkFileMulti(const void *data, size_t size, struct checkRq *rqs, size_t amount) {
 	unzFile *story;
 	char *fname;
 	void *buf;// size_t bsize = 0;
@@ -56,22 +65,22 @@ bool checkFile(const void *data, size_t size, const char *text, bool sens) {
 	ourmemory_t unzmem = {0};
 
 	unzmem.size = size;
-	unzmem.base = data;
+	unzmem.base = (void*)data;
 
 	fill_memory_filefunc(&filefunc, &unzmem);
 
 	story = unzOpen2("", &filefunc);
-	if (!story) {
+	if (unlikely(!story)) {
 		dprintf(2, "Failed to open story file\n");
-		return false;
+		return;
 	}
 
 	unz_global_info info;
 	ret = unzGetGlobalInfo(story, &info);
-	if (ret != UNZ_OK) {
+	if (unlikely(ret != UNZ_OK)) {
 		dprintf(2, "Failed to geet story global info\n");
 		unzClose(story);
-		return false;
+		return;
 	}
 
 	//NOTE: alloca looks fine here, malloc is excessive
@@ -80,13 +89,13 @@ bool checkFile(const void *data, size_t size, const char *text, bool sens) {
 	for(uLong i = 0; i < info.number_entry; i++) {
 		unz_file_info finfo;
 		size_t len;
-		if (ret != UNZ_OK) {
+		if (unlikely(ret != UNZ_OK)) {
 			dprintf(2, "Failed to load next story file\n");
 			break;
 		}
 
 		ret = unzGetCurrentFileInfo(story, &finfo, fname, 1024, NULL, 0, NULL, 0);
-		if (ret != UNZ_OK) {
+		if (unlikely(ret != UNZ_OK)) {
 			dprintf(2, "Couldn't read file info, skipping\n");
 			continue;
 		}
@@ -102,32 +111,42 @@ bool checkFile(const void *data, size_t size, const char *text, bool sens) {
 			//Read it
 			//TODO: reduce amount of mallocs
 			buf = malloc(finfo.uncompressed_size);
-			if (!buf) {
+			if (unlikely(!buf)) {
 				dprintf(2, "Failed to allocate memory\n");
 				free(buf);
 				break;
 			}
 			ret = unzOpenCurrentFile(story);
-			if (ret != UNZ_OK) {
+			if (unlikely(ret != UNZ_OK)) {
 				dprintf(2, "Failed to open chapter, skipping\n");
 			} else {
 				//Do read
+				//Heaviest call in function
+				//Over 70% of total time
 				ret = unzReadCurrentFile(story, buf, finfo.uncompressed_size);
 				if (ret < 0) {
 					//Error
 					dprintf(2, "Failed to read chapter, skipping\n");
 				} else {
 					//Ok, now search
-					//Simple strstr enough?
-					char *sret;
-					if (sens)
-						sret = strcasestr(buf, text);
-					else
-						sret = strstr(buf, text);
-					if (sret != NULL) {
-						//FOUND!
-						goto found;
+					bool stop = true;
+					for(size_t j = 0; j < amount; j++) {
+						if(rqs[j].ret)
+							continue;
+						char *sret;
+						if (rqs[j].sens)
+							sret = strcasestr(buf, rqs[j].text);
+						else
+							sret = strstr(buf, rqs[j].text);
+						if (sret != NULL) {
+							//FOUND!
+							rqs[j].ret = true;
+							goto found;
+						}
+						stop = stop & rqs[j].ret;
 					}
+					if(stop)
+						goto found;
 				}
 				unzCloseCurrentFile(story);
 			}
@@ -138,14 +157,14 @@ bool checkFile(const void *data, size_t size, const char *text, bool sens) {
 
 	//free(fname);//Not a malloc
 	unzClose(story);
-	return false;
+	return;
 
 	found:
 	unzCloseCurrentFile(story);
 	free(buf);
 	//free(fname);//Not a malloc
 	unzClose(story);
-	return true;
+	return;
 }
 
 static int id_sort(const void *a, const void *b) {
