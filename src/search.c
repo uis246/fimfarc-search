@@ -110,7 +110,7 @@ void checkFileMulti(const void *data, size_t size, struct checkRq *rqs, size_t a
 			//That's a chapter
 			//Read it
 			//TODO: reduce amount of mallocs
-			buf = malloc(finfo.uncompressed_size);
+			buf = malloc(finfo.uncompressed_size + 1);
 			if (unlikely(!buf)) {
 				dprintf(2, "Failed to allocate memory\n");
 				free(buf);
@@ -124,6 +124,7 @@ void checkFileMulti(const void *data, size_t size, struct checkRq *rqs, size_t a
 				//Heaviest call in function
 				//Over 70% of total time
 				ret = unzReadCurrentFile(story, buf, finfo.uncompressed_size);
+				((char*)buf)[finfo.uncompressed_size] = 0;
 				if (ret < 0) {
 					//Error
 					dprintf(2, "Failed to read chapter, skipping\n");
@@ -138,11 +139,11 @@ void checkFileMulti(const void *data, size_t size, struct checkRq *rqs, size_t a
 							sret = strcasestr(buf, rqs[j].text);
 						else
 							sret = strstr(buf, rqs[j].text);
-						if (sret != NULL) {
+						/*if (sret != NULL) {
 							//FOUND!
 							rqs[j].ret = true;
-							goto found;
-						}
+						}*/
+						rqs[j].ret = sret != NULL;
 						stop = stop & rqs[j].ret;
 					}
 					if(stop)
@@ -165,11 +166,6 @@ void checkFileMulti(const void *data, size_t size, struct checkRq *rqs, size_t a
 	//free(fname);//Not a malloc
 	unzClose(story);
 	return;
-}
-
-static int id_sort(const void *a, const void *b) {
-	const uint32_t *A = a, *B = b;
-	return *A - *B;
 }
 
 void search() {

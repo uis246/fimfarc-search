@@ -216,7 +216,7 @@ size_t readfile(const char *restrict path, void *restrict*ptr) {
 	return size;
 }
 
-static int id_sort(const void *a, const void *b) {
+int id_sort(const void *a, const void *b) {
 	const uint32_t *A = a, *B = b;
 	return *A - *B;
 }

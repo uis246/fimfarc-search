@@ -27,9 +27,6 @@
 //
 //Simplified MSF:
 //<target> <path>: <target> [logop] term
-//
-//Oversimplified MSF:
-//target/path: <target> [logop] term
 
 #include "fimfar.h"
 
@@ -51,9 +48,15 @@ struct opcode {
 	const struct target *input; //List of ids for logic operation
 	struct target *output; //Output list of ids
 	enum LogOp mode;
-	uint8_t depth;
+	uint8_t depth;//Dependency depth
+	//TODO: add max depth check
 	bool sens; //Case-sensetiveness
 };
+
+#define REPORT_TARGETS 0
+#if REPORT_TARGETS
+static const char *logops[] = {"AND", "OR", "REMOVE"};
+#endif
 
 struct tchunk {
 	struct target targets[64];
@@ -108,7 +111,7 @@ inline static bool bufSearch(const struct stringbuf *buf, const uint32_t id, con
 #define chkNotExists(name) !chkExists(name)
 //FIXME: check for null
 #define saveTarget(t) &current->targets[target_count%64]; {current->targets[target_count%64] = t; target_count++; if(!target_count%64) {current->next = malloc(sizeof(struct tchunk)); current = current->next; current->next = NULL;}}
-#define searchTarget(output, tarname) {struct tchunk *cur = &root; if(tarname.length)for(size_t i = 0; i < target_count;) {\
+#define searchTarget(output, tarname) {output = NULL; struct tchunk *cur = &root; if(tarname.length)for(size_t i = 0; i < target_count;) {\
 		if(cmpstrview(&tarname, &cur->targets[i%64].name)){ output = &cur->targets[i%64]; break;}\
 		i++; if(!i%64) cur = cur->next;\
 	}}
@@ -122,8 +125,8 @@ inline static bool bufSearch(const struct stringbuf *buf, const uint32_t id, con
 #define addOutput(outTarget, storyid) {if(outTarget->read_only){dprintf(2, "Attempting to write read-only target\n"); abort();} bufappend(&outTarget->buf, &storyid, sizeof(storyid));}
 
 static int dep_sort(const void *a, const void *b) {
-	const struct opcode *A = a, *B = b;
-	return ((int)A->depth) - (int)B->depth;
+	const struct opcode **A = a, **B = b;
+	return ((int)(*A)->depth) - (int)(*B)->depth;
 }
 
 void multisearch(const char *arch, const char *infile) {
@@ -248,6 +251,10 @@ void multisearch(const char *arch, const char *infile) {
 				c = indata[pos];
 				//Search for target
 				searchTarget(code.input, tar_in);
+				if(!code.input) {
+					//Target not found
+					abort();
+				}
 			}
 			if(c == '&' || c == '|' || c == '~') {
 				//logop
@@ -271,7 +278,7 @@ void multisearch(const char *arch, const char *infile) {
 				chkEOF();
 				c = indata[pos];
 			} else
-				code.mode = OR;
+				code.mode = code.input ? AND : OR;
 			if(c == '"' || c == '\'') {
 				//search term
 				//TODO: sens is inverted
@@ -287,8 +294,6 @@ void multisearch(const char *arch, const char *infile) {
 						continue;
 					//save shit
 					code.text = strndup(indata + pos, i);
-					//code.text.data = indata + pos;
-					//code.text.length = i;
 					pos += i + 1;
 					break;
 				}
@@ -309,6 +314,7 @@ void multisearch(const char *arch, const char *infile) {
 				abort();
 			}
 			//Read file
+			//NOTE: careful with allocas
 			char *path = alloca(ot.path.length + 1);
 			memcpy(path, ot.path.data, ot.path.length);
 			path[ot.path.length] = 0;
@@ -323,6 +329,7 @@ void multisearch(const char *arch, const char *infile) {
 		}
 	 	pos += skipSpaces(indata + pos, insize - pos);
 	}
+	#if REPORT_TARGETS
 	current = &root;
 	for(size_t i = 0; i < target_count;) {
 		struct target *t = &current->targets[i%64];
@@ -340,6 +347,7 @@ void multisearch(const char *arch, const char *infile) {
 		if(!i%64)
 			current = current->next;
 	}
+	#endif
 	//Create waves for batching
 	struct opcode **BigOpcodeList;
 	struct waveinfo {
@@ -370,6 +378,16 @@ void multisearch(const char *arch, const char *infile) {
 			if(!j%64)
 				cur_dep = cur_dep->next;
 		}
+		#if REPORT_TARGETS
+		printf("%zu:\t", i);
+		if(o->input)
+			printf("%.*s %s ", o->input->name.length, o->input->name.data, logops[o->mode]);
+		if(!o->sens)
+			printf("'%s' ", o->text);
+		else
+			printf("\"%s\" ", o->text);
+		printf("%u\n", o->depth);
+		#endif
 
 		BigOpcodeList[i] = o;
 		i++;
@@ -412,6 +430,8 @@ void multisearch(const char *arch, const char *infile) {
 		}
 		i += added;
 	}
+	for(size_t i = 0; i < wave_count; i++)
+		printf("Wave %zu with %zu\n", i, waves[i].amount);
 	
 	//Open archive
 	unzFile *archive;
@@ -454,12 +474,10 @@ void multisearch(const char *arch, const char *infile) {
 			fname[len - 5] = 0;
 			id = strtoul(strrchr(fname, '-') + 1, NULL, 10);
 
-//			o_current = &o_root;
 			void *buf = NULL;
 			//Iterate over waves
-			for(size_t i = 0; i < wave_count;) {
-//				struct opcode *o = &o_current->opcodes[i%64];
-				struct waveinfo *wi = &waves[i];
+			for(size_t j = 0; j < wave_count; j++) {
+				struct waveinfo *wi = &waves[j];
 
 				//Do logic here
 				for(size_t k = 0; k < wi->amount; k++) {
@@ -485,7 +503,7 @@ void multisearch(const char *arch, const char *infile) {
 						break;
 					}
 				if(skip)
-					goto cont;
+					continue;
 				//search text
 				//Read file if needed
 				if(!buf) {
@@ -514,31 +532,46 @@ void multisearch(const char *arch, const char *infile) {
 					if(wi->rqs[k].ret == 1 && !(wi->op[k]->mode == REMOVE)) {
 						addOutput(wi->op[k]->output, id);
 					}
-//				found = checkFile(buf, file_info.uncompressed_size, o->text, o->sens);
-//				if (found ^ (o->mode == REMOVE))
-					//Add to stories list
-//					addOutput(o->output, id);
-				//
-
-				cont:
-				i++;
-//				if(!i%64)
-//					o_current = o_current->next;
 			}
 			if(buf)
 				unzCloseCurrentFile(archive);
 			free(buf);
 
-			//Next
 		}
+		//Next
 		ret = unzGoToNextFile(archive);
 	}
 	
 	//Save results
-	
+	for(size_t i = 0; i < opcode_count; i++) {
+		struct opcode *op = BigOpcodeList[i];
+		if(!op->output->path.data)
+			continue;
+		//Sort
+		qsort(op->output->buf.data, op->output->buf.length/sizeof(uint32_t), sizeof(uint32_t), id_sort);
+		//Open
+		size_t len = op->output->path.length;
+		char path[len + 1];
+		memcpy(path, op->output->path.data, len);
+		path[len] = 0;
+		//Save
+		FILE *out = fopen(path, "wb");
+		if(out == NULL) {
+			dprintf(2, "Failed to open file %s\n", path);
+			continue;
+		}
+		fwrite(op->output->buf.data, sizeof(uint32_t), op->output->buf.length/sizeof(uint32_t), out);
+		fclose(out);
+	}
+
 	//Free memory
+	//freearchive:
+	unzClose(archive);
 	freetree:
+	free(BigOpcodeList);
+	free(waves);
 	freeops:
+	//TODO
 	free(indata);
 	indata = NULL;
 	insize = 0;

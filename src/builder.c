@@ -91,6 +91,7 @@ void builder() {
 	story_bin = fopen(STORY_PATH, "wb");
 	tag_bin = fopen(TAG_PATH, "wb");
 	assoc_bin = fopen(ASSOC_PATH, "wb");
+	//FIXME: check fopen for errors
 	json_open_stream(s, f);
 	json_set_streaming(s, 1);
 	

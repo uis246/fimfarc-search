@@ -71,8 +71,10 @@ struct checkRq {
 
 void builder();
 void search();
+void multisearch(const char *archive, const char *infile);
+
 size_t readfile(const char *restrict path, void *restrict *ptr);
 void bufappend(struct stringbuf *restrict buf, const void *restrict data, const size_t size);
-void multisearch(const char *archive, const char *infile);
 bool checkFile(const void *data, size_t size, const char *text, bool sens);
 void checkFileMulti(const void *data, size_t size, struct checkRq *rqs, size_t amount);
+int id_sort(const void *a, const void *b);
