@@ -86,9 +86,9 @@ inline static bool cmpstrview(const struct stringview *restrict a, const struct 
 
 inline static bool bufSearch(const struct stringbuf *buf, const uint32_t id, const bool fast) {
 	uint32_t *list = (uint32_t*)buf->data;
-	size_t len = buf->length;
+	size_t count = buf->length / sizeof(uint32_t);
 	if(fast) {
-		for (size_t i = 0; i < len; i++) {
+		for (size_t i = 0; i < count; i++) {
 			if(list[i] < id)
 				continue;
 			else if(list[i] == id)
@@ -98,9 +98,13 @@ inline static bool bufSearch(const struct stringbuf *buf, const uint32_t id, con
 		}
 		return false;
 	} else {
-		for (size_t i = 0; i < len; i++)
+		/*for (size_t i = 0; i < len; i++)
 			if (list[i] == id)
-				return true;
+				return true;*/
+		//Here's optimization hack:
+		//Check only last entry
+		if(count)
+			return list[count - 1] == id;
 		return false;
 	}
 }
@@ -125,7 +129,7 @@ inline static bool bufSearch(const struct stringbuf *buf, const uint32_t id, con
 #define addOutput(outTarget, storyid) {if(outTarget->read_only){dprintf(2, "Attempting to write read-only target\n"); abort();} bufappend(&outTarget->buf, &storyid, sizeof(storyid));}
 
 static int dep_sort(const void *a, const void *b) {
-	const struct opcode **A = a, **B = b;
+	const struct opcode **A = (const struct opcode **)a, **B = (const struct opcode **)b;
 	return ((int)(*A)->depth) - (int)(*B)->depth;
 }
 
