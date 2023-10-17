@@ -114,13 +114,13 @@ inline static bool bufSearch(const struct stringbuf *buf, const uint32_t id, con
 #define chkExists(name)
 #define chkNotExists(name) !chkExists(name)
 //FIXME: check for null
-#define saveTarget(t) &current->targets[target_count%64]; {current->targets[target_count%64] = t; target_count++; if(!target_count%64) {current->next = malloc(sizeof(struct tchunk)); current = current->next; current->next = NULL;}}
+#define saveTarget(t) &current->targets[target_count%64]; {current->targets[target_count%64] = t; target_count++; if(!(target_count%64)) {current->next = malloc(sizeof(struct tchunk)); current = current->next; current->next = NULL;}}
 #define searchTarget(output, tarname) {output = NULL; struct tchunk *cur = &root; if(tarname.length)for(size_t i = 0; i < target_count;) {\
 		if(cmpstrview(&tarname, &cur->targets[i%64].name)){ output = &cur->targets[i%64]; break;}\
-		i++; if(!i%64) cur = cur->next;\
+		i++; if(!(i%64)) cur = cur->next;\
 	}}
 //FIXME: check for null
-#define saveOpcode(t) {o_current->opcodes[opcode_count%64] = t; opcode_count++; if(!opcode_count%64) {o_current->next = malloc(sizeof(struct ochunk)); o_current = o_current->next; o_current->next = NULL;}}
+#define saveOpcode(t) {o_current->opcodes[opcode_count%64] = t; opcode_count++; if(!(opcode_count%64)) {o_current->next = malloc(sizeof(struct ochunk)); o_current = o_current->next; o_current->next = NULL;}}
 //FIXME: search appears to be broken
 //#define searchOpcode(output, targetptr) {struct ochunk *cur = &o_root; for(size_t i = 0; i < opcode_count;) {\
 		if(cur->opcodes[i%64].output == targetptr){ output = &cur->targets[i%64]; break;}\
@@ -137,6 +137,8 @@ void multisearch(const char *arch, const char *infile) {
 	//Load infile
 	char *indata;
 	size_t insize = readfile(infile, (void**)&indata), pos = 0;
+	if(insize == 0)
+		return;
 	size_t target_count = 0, opcode_count = 0;
 	struct tchunk root;
 	struct ochunk o_root;
@@ -348,7 +350,7 @@ void multisearch(const char *arch, const char *infile) {
 			printf("=");
 		printf("\n");
 		i++;
-		if(!i%64)
+		if(!(i%64))
 			current = current->next;
 	}
 	#endif
@@ -379,7 +381,7 @@ void multisearch(const char *arch, const char *infile) {
 				break;
 			}
 			j++;
-			if(!j%64)
+			if(!(j%64))
 				cur_dep = cur_dep->next;
 		}
 		#if REPORT_TARGETS
@@ -395,7 +397,7 @@ void multisearch(const char *arch, const char *infile) {
 
 		BigOpcodeList[i] = o;
 		i++;
-		if(!i%64)
+		if(!(i%64))
 			o_current = o_current->next;
 	}
 	wave_count++;
