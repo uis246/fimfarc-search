@@ -32,13 +32,14 @@ searcher_doc[] = "PATTERN";
 static struct {
 	enum {
 		None = 0,
-		Builder,
-		Namer,
+		Builder,//Builds db for tags and names
+		Namer,//Get name from id and vice versa
 		Selector,//By tags
 		Searcher,//In text
 		Merger,//And, or
 		Loader,//Just loads from text to bin list
 		Multisearch,//Do multiple searches in text in parallel
+		Arcstat,
 	} mode;
 	union{
 		struct {
@@ -221,13 +222,12 @@ int id_sort(const void *a, const void *b) {
 	return *A - *B;
 }
 
-
 //FIXME: Use fixed endian
 int main(int argc, char* argv[])
 {
 	if (argc < 2) {
 		dprintf(2, "Select one tool:\n"
-		"\tbuild\n\tname\n\tselect\n\tsearch\n\tmerge\n\tload\n\tmake\n");
+		"\tbuild\n\tname\n\tselect\n\tsearch\n\tmerge\n\tload\n\tmake\n\tarcstat\n");
 		return -1;
 	}
 
@@ -245,6 +245,8 @@ int main(int argc, char* argv[])
 		args.mode = Loader;
 	else if (strcmp(argv[1], "make") == 0)
 		args.mode = Multisearch;
+	else if (strcmp(argv[1], "arcstat") == 0)
+		args.mode = Arcstat;
 	else {
 		dprintf(2, "Tool %s not found\n", argv[1]);
 		return -1;
@@ -401,6 +403,12 @@ int main(int argc, char* argv[])
 			return -1;
 		}
 		multisearch(argv[2], argv[3]);
+	} else if(args.mode == Arcstat) {
+		if(argc != 3) {
+			printf("Usage: %s arcstat ARCHIVE\n", argv[0]);
+			return -1;
+		}
+		arcstat(argv[2]);
 	} else {
 		dprintf(2, "Tool %s is not implemented\n", argv[1]);
 		return -2;

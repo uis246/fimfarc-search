@@ -308,3 +308,110 @@ void search() {
 	unzClose(archive);
 	free(list);
 }
+
+void arcstat(const char *restrict arc) {
+	unzFile *archive;
+	archive = unzOpen64(arc);
+	if (!archive) {
+		dprintf(2, "Failed to open archive file %s\n", arc);
+		perror("Error");
+		return;
+	}
+	char *fname;
+	void *buf;
+	//NOTE: alloca looks fine here, malloc is excessive
+	fname = alloca(1024);
+	int ret = UNZ_OK;
+	uLong epubs = 0, epubMax = 0, storyMax = 0;
+	while(ret == UNZ_OK) {
+		unz_file_info file_info;
+		ret = getNextEpub(archive, &file_info, NULL);
+		if(ret != 1)
+			break;
+		epubs++;
+		if(epubMax < file_info.uncompressed_size)
+			epubMax = file_info.uncompressed_size;
+		//Read it
+		buf = malloc(file_info.uncompressed_size);
+		if (buf == NULL) {
+			dprintf(2, "Failed to allocate memory\n");
+			//Don't forget to select next file
+			ret = unzGoToNextFile(archive);
+			continue;
+		}
+		ret = unzOpenCurrentFile(archive);
+		if (ret != UNZ_OK) {
+			dprintf(2, "Failed to open file from archive, skipping\n");
+		} else {
+			//Read and search
+			ret = unzReadCurrentFile(archive, buf, file_info.uncompressed_size);
+			if (ret < 0) {
+				//Error
+				dprintf(2, "Failed to read file from archive, skipping\n");
+			} else {
+				//Ok, now get size
+				unzFile *story;
+				uLong storyCur = 0;
+				int ret;
+				zlib_filefunc_def filefunc = { 0 };
+				ourmemory_t unzmem = {0};
+
+				unzmem.size = file_info.uncompressed_size;
+				unzmem.base = (void*)buf;
+
+				fill_memory_filefunc(&filefunc, &unzmem);
+
+				story = unzOpen2("", &filefunc);
+				if (unlikely(!story)) {
+					dprintf(2, "Failed to open story file\n");
+					return;
+				}
+
+				unz_global_info info;
+				ret = unzGetGlobalInfo(story, &info);
+				if (unlikely(ret != UNZ_OK)) {
+					dprintf(2, "Failed to geet story global info\n");
+					unzClose(story);
+					goto epubclose;
+				}
+
+				for(uLong i = 0; i < info.number_entry; i++) {
+					size_t len;
+					if (unlikely(ret != UNZ_OK)) {
+						dprintf(2, "Failed to load next story file\n");
+						break;
+					}
+
+					ret = unzGetCurrentFileInfo(story, &file_info, fname, 1024, NULL, 0, NULL, 0);
+					if (unlikely(ret != UNZ_OK)) {
+						dprintf(2, "Couldn't read file info, skipping\n");
+						continue;
+					}
+					len = strnlen(fname, 1024);
+					if (fname[len - 1] == '/') {
+						//It's a dir, skipping
+						ret = unzGoToNextFile(story);
+						continue;
+					}
+
+					if (strcmp(fname + len - 5, ".html") == 0) {
+						//That's a chapter
+						storyCur += file_info.uncompressed_size;
+					}
+					ret = unzGoToNextFile(story);
+				}
+				unzClose(story);
+				if(storyMax < storyCur)
+					storyMax = storyCur;
+			}
+			epubclose:
+			unzCloseCurrentFile(archive);
+		}
+		free(buf);
+		//Don't forget to select next file
+		ret = unzGoToNextFile(archive);
+	};
+
+	//Report sizes
+	printf("Num stories: %lu\nMax epub file size: %lu bytes\nMax all story chapters size: %lu bytes\n", epubs, epubMax, storyMax);
+}

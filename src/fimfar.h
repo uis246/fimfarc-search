@@ -70,6 +70,7 @@ struct checkRq {
 void builder();
 void search();
 void multisearch(const char * restrict archive, const char * restrict infile);
+void arcstat(const char *restrict archive);
 
 size_t readfile(const char *restrict path, void *restrict *ptr);
 void bufappend(struct stringbuf *restrict buf, const void *restrict data, const size_t size);
