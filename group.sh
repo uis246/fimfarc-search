@@ -35,6 +35,7 @@ fi
 #cat /tmp/group.$$.* > /tmp/group.$$
 
 #Save to binaries
+mkdir -p group
 ./fimfar load group/$1_$2.bin /tmp/group.$$
 
 rm /tmp/group.$$
