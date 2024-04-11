@@ -4,6 +4,10 @@
 
 #define STATE_REPORT 0
 
+#ifdef __linux__
+#include <sched.h>
+#endif
+
 static struct argp_option namer_options[] = {
 	{ "tag", 't', 0, 0, "Return tag by id", 0 },
 	{ "name", 'n', 0, 0, "Return story name by id", 0 },
@@ -39,7 +43,7 @@ static struct {
 		Merger,//And, or
 		Loader,//Just loads from text to bin list
 		Multisearch,//Do multiple searches in text in parallel
-		Arcstat,
+		Arcstat,//Very basic statistics of archive
 	} mode;
 	union{
 		struct {
@@ -251,6 +255,16 @@ int main(int argc, char* argv[])
 		dprintf(2, "Tool %s not found\n", argv[1]);
 		return -1;
 	}
+
+	#ifdef __linux__
+	//Set BATCH mode
+	int sched = sched_getscheduler(0);
+	if (sched != SCHED_IDLE) {
+		struct sched_param param;
+		param.sched_priority = 0;
+		sched_setscheduler(0, SCHED_BATCH, &param);
+	}
+	#endif
 
 	if (args.mode == Builder) {
 		builder();
