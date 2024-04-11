@@ -5,8 +5,6 @@
 #include <string.h>
 #include <inttypes.h>
 
-#include <sys/mman.h>
-
 #define STORE_PATH 0
 
 #define ASSOC_PATH "db/assoc.bin"
@@ -71,7 +69,7 @@ struct checkRq {
 
 void builder();
 void search();
-void multisearch(const char *archive, const char *infile);
+void multisearch(const char * restrict archive, const char * restrict infile);
 
 size_t readfile(const char *restrict path, void *restrict *ptr);
 void bufappend(struct stringbuf *restrict buf, const void *restrict data, const size_t size);

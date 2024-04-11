@@ -168,6 +168,35 @@ void checkFileMulti(const void *data, size_t size, struct checkRq *rqs, size_t a
 	return;
 }
 
+int getNextEpub(unzFile archive, unz_file_info *epub_info, char *fname) {
+	int ret;
+	if (fname == NULL)
+		fname = alloca(4096);
+	do {
+		size_t len;
+		ret = unzGetCurrentFileInfo(archive, epub_info, fname, 4096, NULL, 0, NULL, 0);
+		if (ret != UNZ_OK) {
+			dprintf(2, "Couldn't read file info, skipping\n");
+			goto skip;
+		}
+		len = strlen(fname);
+		assert(len < 4096);
+		if (fname[len - 1] == '/') {
+			//It's a dir, skipping
+			goto skip;
+		}
+		if (strcmp(fname + len - 5, ".epub") == 0) {
+			//That's a story
+			//Remove ".epub" part of name
+			fname[len - 5] = 0;
+			return 1;
+		}
+		skip:
+		ret = unzGoToNextFile(archive);
+	} while (ret == UNZ_OK);
+	return 0;
+}
+
 void search() {
 	struct stringbuf stories = {0};
 	FILE *out;
@@ -214,76 +243,62 @@ void search() {
 	//Search for listed files in archive
 	fname = malloc(4096);
 	int ret = UNZ_OK;//That's kinda from unzGoToNextFile
-	for(uLong i = 0; i < info.number_entry; i++) {
+	while (ret == UNZ_OK) {
 		unz_file_info file_info;
-		size_t len;
-		if (ret != UNZ_OK) {//unzGoToNextFile failed
-			dprintf(2, "Failed to read next file\n");
+		ret = getNextEpub(archive, &file_info, fname);
+		if(ret != 1)
 			break;
+
+		//Check in list
+		uint32_t id;
+		bool found = false;
+		//Get id
+		id = strtoul(strrchr(fname, '-') + 1, NULL, 10);
+
+		if (list) {
+		for (size_t i = 0; i < list_s; i++) {
+			if (list[i] == id) {
+				found = true;
+				break;
+			}
 		}
-		ret = unzGetCurrentFileInfo(archive, &file_info, fname, 4096, NULL, 0, NULL, 0);
-		if (ret != UNZ_OK) {
-			dprintf(2, "Couldn't read file info, skipping\n");
-			continue;
-		}
-		len = strlen(fname);
-		if (fname[len - 1] == '/') {
-			//It's a dir, skipping
+		if (!found ^ (search_args.mode == OR)) {
+			//Not found in list, skip
+			//Or found, but in OR mode
 			ret = unzGoToNextFile(archive);
 			continue;
 		}
-		if (strcmp(fname + len - 5, ".epub") == 0) {
-			//That's a story
-			//Check in list
-			uint32_t id;
-			bool found = false;
-			fname[len - 5] = 0;
-			id = strtoul(strrchr(fname, '-') + 1, NULL, 10);
-
-			if (list) {
-			for (size_t i = 0; i < list_s; i++) {
-				if (list[i] == id) {
-					found = true;
-					break;
-				}
-			}
-			if (!found ^ (search_args.mode == OR)) {
-				//Not found in list, skip
-				//Or found, but in OR mode
-				ret = unzGoToNextFile(archive);
-				continue;
-			}
-			}
-
-			//Read it
-			buf = malloc(file_info.uncompressed_size);
-			if (!buf) {
-				dprintf(2, "Failed to allocate memory\n");
-				free(buf);
-				goto end;
-			}
-			ret = unzOpenCurrentFile(archive);
-			if (ret != UNZ_OK) {
-				dprintf(2, "Failed to open file from archive, skipping\n");
-			} else {
-				//Read and search
-				ret = unzReadCurrentFile(archive, buf, file_info.uncompressed_size);
-				if (ret < 0) {
-					//Error
-					dprintf(2, "Failed to read file from archive, skipping\n");
-				} else {
-					//Ok, now search
-					found = checkFile(buf, file_info.uncompressed_size, search_args.text, search_args.sens);
-					if (found ^ (search_args.mode == REMOVE))
-						//Add to stories list
-						bufappend(&stories, &id, sizeof(id));
-				}
-				unzCloseCurrentFile(archive);
-			}
-			free(buf);
 		}
+
+		//Read it
+		buf = malloc(file_info.uncompressed_size);
+		if (buf == NULL) {
+			dprintf(2, "Failed to allocate memory\n");
+			goto end;
+		}
+		ret = unzOpenCurrentFile(archive);
+		if (ret != UNZ_OK) {
+			dprintf(2, "Failed to open file from archive, skipping\n");
+		} else {
+			//Read and search
+			ret = unzReadCurrentFile(archive, buf, file_info.uncompressed_size);
+			if (ret < 0) {
+				//Error
+				dprintf(2, "Failed to read file from archive, skipping\n");
+			} else {
+				//Ok, now search
+				found = checkFile(buf, file_info.uncompressed_size, search_args.text, search_args.sens);
+				if (found ^ (search_args.mode == REMOVE))
+					//Add to stories list
+					bufappend(&stories, &id, sizeof(id));
+			}
+			unzCloseCurrentFile(archive);
+		}
+		free(buf);
+
+		//Don't forget to select next file
 		ret = unzGoToNextFile(archive);
-	}
+	};
 	end:
 	free(fname);
 	qsort(stories.data, stories.length/sizeof(uint32_t), sizeof(uint32_t), id_sort);

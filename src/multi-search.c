@@ -35,6 +35,7 @@
 #include <stdio.h>
 
 extern char *archive; //Path to archive
+int getNextEpub(unzFile archive, unz_file_info *epub_info, char *fname);
 
 struct target {
 	struct stringbuf buf;
@@ -122,9 +123,9 @@ inline static bool bufSearch(const struct stringbuf *buf, const uint32_t id, con
 //FIXME: check for null
 #define saveOpcode(t) {o_current->opcodes[opcode_count%64] = t; opcode_count++; if(!(opcode_count%64)) {o_current->next = malloc(sizeof(struct ochunk)); o_current = o_current->next; o_current->next = NULL;}}
 //FIXME: search appears to be broken
-//#define searchOpcode(output, targetptr) {struct ochunk *cur = &o_root; for(size_t i = 0; i < opcode_count;) {\
+/*#define searchOpcode(output, targetptr) {struct ochunk *cur = &o_root; for(size_t i = 0; i < opcode_count;) {\
 		if(cur->opcodes[i%64].output == targetptr){ output = &cur->targets[i%64]; break;}\
-	}}
+	}}*/
 #define searchInput(inTarget, storyid) bufSearch(&inTarget->buf, storyid, inTarget->read_only)
 #define addOutput(outTarget, storyid) {if(outTarget->read_only){dprintf(2, "Attempting to write read-only target\n"); abort();} bufappend(&outTarget->buf, &storyid, sizeof(storyid));}
 
@@ -133,7 +134,9 @@ static int dep_sort(const void *a, const void *b) {
 	return ((int)(*A)->depth) - (int)(*B)->depth;
 }
 
-void multisearch(const char *arch, const char *infile) {
+//static void save_results(struct opcode **BigOpcodeList, size_t opcode_count, const char *restrict statout) {}
+
+void multisearch(const char *restrict arch, const char *restrict infile) {
 	//Load infile
 	char *indata;
 	size_t insize = readfile(infile, (void**)&indata), pos = 0;
@@ -424,9 +427,9 @@ void multisearch(const char *arch, const char *infile) {
 		waves[depth].rqs = malloc(added * sizeof(struct checkRq));
 		if(waves[depth].rqs == NULL) {
 			free(BigOpcodeList);
-			free(waves);
 			for(size_t j = 0; j < depth; j++)
 				free(waves[j].rqs);
+			free(waves);
 			dprintf(2, "Failed to allocate memory\n");
 			goto freeops;
 		}
@@ -453,121 +456,107 @@ void multisearch(const char *arch, const char *infile) {
 		goto freetree;
 	}
 	//Iterate over epub
-	char *fname = alloca(1024);
+	char *fname = alloca(4096);
 	int ret = UNZ_OK;
-	for(uLong i = 0; i < info.number_entry; i++) {
+	while (ret == UNZ_OK) {
 		unz_file_info file_info;
-		size_t len;
-		if (ret != UNZ_OK) {//unzGoToNextFile failed
-			dprintf(2, "Failed to read next file\n");
+		ret = getNextEpub(archive, &file_info, fname);
+		if(ret != 1)
 			break;
-		}
-		ret = unzGetCurrentFileInfo(archive, &file_info, fname, 1024, NULL, 0, NULL, 0);
-		if (ret != UNZ_OK) {
-			dprintf(2, "Couldn't read file info, skipping\n");
-			continue;
-		}
-		len = strlen(fname);
-		if (fname[len - 1] == '/') {
-			//It's a dir, skipping
-			ret = unzGoToNextFile(archive);
-			continue;
-		}
-		if (strncmp(fname + len - 5, ".epub", 5) == 0) {
-			//That's a story
-			//Check in list
-			uint32_t id;
-			fname[len - 5] = 0;
-			id = strtoul(strrchr(fname, '-') + 1, NULL, 10);
 
-			void *buf = NULL;
-			//Iterate over waves
-			for(size_t j = 0; j < wave_count; j++) {
-				struct waveinfo *wi = &waves[j];
+		//Check in list
+		uint32_t id;
+		id = strtoul(strrchr(fname, '-') + 1, NULL, 10);
 
-				//Do logic here
-				for(size_t k = 0; k < wi->amount; k++) {
-					bool found = false;
-					struct opcode *o = *(wi->op + k);
-					if(o->input)
-						found = searchInput(o->input, id);
-					if(found && o->mode == OR) {
-						//add
-						addOutput(o->output, id);
-						wi->rqs[k].ret = 2;//2 means skip
-					} else if(!found && o->mode != OR) {
-						//skip
-						wi->rqs[k].ret = 2;
+		void *buf = NULL;
+		//Iterate over waves
+		for(size_t j = 0; j < wave_count; j++) {
+			struct waveinfo *wi = &waves[j];
+
+			//Do logic here
+			for(size_t k = 0; k < wi->amount; k++) {
+				bool found = false;
+				struct opcode *o = *(wi->op + k);
+				if(o->input)
+					found = searchInput(o->input, id);
+				if(found && o->mode == OR) {
+					//add
+					addOutput(o->output, id);
+					wi->rqs[k].ret = 2;//2 means skip
+				} else if(!found && o->mode != OR) {
+					//skip
+					wi->rqs[k].ret = 2;
 //						goto cont;
-					} else
-						wi->rqs[k].ret = 0;
-				}
-				bool skip = true;
-				for(size_t k = 0; k < wi->amount; k++)
-					if(wi->rqs[k].ret == 0) {
-						skip = false;
-						break;
-					}
-				if(skip)
-					continue;
-				//search text
-				//Read file if needed
-				if(!buf) {
-					buf = malloc(file_info.uncompressed_size);
-					if (!buf) {
-						dprintf(2, "Failed to allocate memory\n");
-						exit(-1);
-					}
-					ret = unzOpenCurrentFile(archive);
-					if (ret != UNZ_OK) {
-						dprintf(2, "Failed to open file from archive, terminating\n");
-						abort();
-					} else {
-						//Read and search
-						ret = unzReadCurrentFile(archive, buf, file_info.uncompressed_size);
-						if (ret < 0) {
-							//Error
-							dprintf(2, "Failed to read file from archive, terminating\n");
-							abort();
-						}
-					}
-				}
-				//Ok, now search
-				checkFileMulti(buf, file_info.uncompressed_size, wi->rqs, wi->amount);
-				for(size_t k = 0; k < wi->amount; k++)
-					if(wi->rqs[k].ret == 1 && !(wi->op[k]->mode == REMOVE)) {
-						addOutput(wi->op[k]->output, id);
-					}
+				} else
+					wi->rqs[k].ret = 0;
 			}
-			if(buf)
-				unzCloseCurrentFile(archive);
-			free(buf);
-
+			bool skip = true;
+			for(size_t k = 0; k < wi->amount; k++)
+				if(wi->rqs[k].ret == 0) {
+					skip = false;
+					break;
+				}
+			if(skip)
+				continue;
+			//search text
+			//Read file if needed
+			if(!buf) {
+				buf = malloc(file_info.uncompressed_size);
+				if (!buf) {
+					dprintf(2, "Failed to allocate memory\n");
+					exit(-1);
+				}
+				ret = unzOpenCurrentFile(archive);
+				if (ret != UNZ_OK) {
+					dprintf(2, "Failed to open file from archive, terminating\n");
+					abort();
+				} else {
+					//Read and search
+					ret = unzReadCurrentFile(archive, buf, file_info.uncompressed_size);
+					if (ret < 0) {
+						//Error
+						dprintf(2, "Failed to read file from archive, terminating\n");
+						abort();
+					}
+				}
+			}
+			//Ok, now search
+			checkFileMulti(buf, file_info.uncompressed_size, wi->rqs, wi->amount);
+			for(size_t k = 0; k < wi->amount; k++)
+				if(wi->rqs[k].ret == 1 && !(wi->op[k]->mode == REMOVE)) {
+					addOutput(wi->op[k]->output, id);
+				}
 		}
-		//Next
+		if(buf)
+			unzCloseCurrentFile(archive);
+		free(buf);
+
+		//Don't forget to select next file
 		ret = unzGoToNextFile(archive);
-	}
+	};
 	
 	//Save results
 	for(size_t i = 0; i < opcode_count; i++) {
 		struct opcode *op = BigOpcodeList[i];
 		if(!op->output->path.data)
 			continue;
-		//Sort
+		//Sort ids
 		qsort(op->output->buf.data, op->output->buf.length/sizeof(uint32_t), sizeof(uint32_t), id_sort);
-		//Open
+		//Prepare for file opening
 		size_t len = op->output->path.length;
 		char path[len + 1];
 		memcpy(path, op->output->path.data, len);
 		path[len] = 0;
-		//Save
+		//Open file
 		FILE *out = fopen(path, "wb");
 		if(out == NULL) {
 			dprintf(2, "Failed to open file %s\n", path);
 			continue;
 		}
+		//Write and close
 		fwrite(op->output->buf.data, sizeof(uint32_t), op->output->buf.length/sizeof(uint32_t), out);
 		fclose(out);
+		//Print stats
 	}
 
 	//Free memory

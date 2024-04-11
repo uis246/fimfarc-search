@@ -3,6 +3,8 @@
 #include <assert.h>
 #include <pdjson.h>
 
+#include <sys/mman.h>
+
 #define STATE_REPORT 0
 #define PROGRESS_REPORT 0
 
