@@ -4,6 +4,7 @@
 #include <pdjson.h>
 
 #include <sys/mman.h>
+#include <unistd.h>
 
 #define STATE_REPORT 0
 #define PROGRESS_REPORT 0
@@ -57,6 +58,11 @@ void tagtobuf(struct stringbuf *tagbuf, struct tag *tag) {
 	tag->name.size = 0;
 	tag->name.length = 0;
 }
+void tagfreebuf(struct stringbuf *buf) {
+	munmap(buf->data, buf->size);
+	buf->data = NULL;
+	buf->size = 0;
+}
 
 static int tag_sort(const void *a, const void *b) {
 	const struct tag *A = a, *B = b;
@@ -89,7 +95,12 @@ void builder() {
 		unsigned int story_id;
 		struct stringbuf path, title;
 	} parser = {0};
-	f = fdopen(0, "rb");
+	//f = fdopen(0, "rb");
+	f = stdin;
+	if (isatty(fileno(f))) {
+		fprintf(stderr, "Stdin is not a pipe. You should pipe index.json into builder.\n");
+		return;
+	}
 	story_bin = fopen(STORY_PATH, "wb");
 	tag_bin = fopen(TAG_PATH, "wb");
 	assoc_bin = fopen(ASSOC_PATH, "wb");
@@ -274,6 +285,6 @@ void builder() {
 	for(uint32_t i = 0; i < milestone; i++) {
 		free(((struct tag*)tagbuf.data)[i].name.data);
 	}
-	munmap(tagbuf.data, tagbuf.size);
+	tagfreebuf(&tagbuf);
 }
 
