@@ -36,6 +36,7 @@
 
 extern char *archive; //Path to archive
 int getNextEpub(unzFile archive, unz_file_info *epub_info, char *fname);
+uint32_t getHtmlCount(const void *data, size_t size);
 
 struct target {
 	struct stringbuf buf;
@@ -465,7 +466,7 @@ void multisearch(const char *restrict arch, const char *restrict infile) {
 			break;
 
 		//Check in list
-		uint32_t id;
+		uint32_t id, htmls;
 		id = strtoul(strrchr(fname, '-') + 1, NULL, 10);
 
 		void *buf = NULL;
@@ -486,7 +487,6 @@ void multisearch(const char *restrict arch, const char *restrict infile) {
 				} else if(!found && o->mode != OR) {
 					//skip
 					wi->rqs[k].ret = 2;
-//						goto cont;
 				} else
 					wi->rqs[k].ret = 0;
 			}
@@ -519,6 +519,7 @@ void multisearch(const char *restrict arch, const char *restrict infile) {
 						abort();
 					}
 				}
+				//htmls = getHtmlCount(buf, file_info.uncompressed_size);
 			}
 			//Ok, now search
 			checkFileMulti(buf, file_info.uncompressed_size, wi->rqs, wi->amount);

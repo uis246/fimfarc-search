@@ -55,11 +55,75 @@ bool checkFile(const void *data, size_t size, const char *text, bool sens) {
 	return rq.ret;
 }
 
-//Return true if found pattern
-void checkFileMulti(const void *data, size_t size, struct checkRq *rqs, size_t amount) {
+uint32_t getHtmlCount(const void *data, size_t size) {
 	unzFile *story;
 	char *fname;
 	void *buf;// size_t bsize = 0;
+	uint32_t count = 0;
+	int ret;
+	zlib_filefunc_def filefunc = { 0 };
+	ourmemory_t unzmem = {0};
+
+	unzmem.size = size;
+	unzmem.base = (void*)data;
+
+	fill_memory_filefunc(&filefunc, &unzmem);
+
+	story = unzOpen2("", &filefunc);
+	if (unlikely(!story)) {
+		dprintf(2, "Failed to open story file\n");
+		return 0;
+	}
+
+	unz_global_info info;
+	ret = unzGetGlobalInfo(story, &info);
+	if (unlikely(ret != UNZ_OK)) {
+		dprintf(2, "Failed to geet story global info\n");
+		unzClose(story);
+		return 0;
+	}
+
+	//NOTE: alloca looks fine here, malloc is excessive
+	fname = alloca(1024);
+
+	for(uLong i = 0; i < info.number_entry; i++) {
+		unz_file_info finfo;
+		size_t len;
+		if (unlikely(ret != UNZ_OK)) {
+			dprintf(2, "Failed to load next story file\n");
+			break;
+		}
+
+		ret = unzGetCurrentFileInfo(story, &finfo, fname, 1024, NULL, 0, NULL, 0);
+		if (unlikely(ret != UNZ_OK)) {
+			dprintf(2, "Couldn't read file info, skipping\n");
+			continue;
+		}
+		len = strnlen(fname, 1024);
+		if (fname[len - 1] == '/') {
+			//It's a dir, skipping
+			ret = unzGoToNextFile(story);
+			continue;
+		}
+
+		if (strcmp(fname + len - 5, ".html") == 0) {
+			//That's a chapter
+			//Count it
+			count++;
+		}
+		ret = unzGoToNextFile(story);
+	}
+
+	//free(fname);//Not a malloc
+	unzClose(story);
+	return count;
+}
+//Return true if found pattern
+void checkFileMulti(const void *data, size_t size, struct checkRq *rqs, size_t amount, char **cache) {
+	unzFile *story;
+	char *fname;
+	void *buf;// size_t bsize = 0;
+	uint32_t count = 0;
 	int ret;
 	zlib_filefunc_def filefunc = { 0 };
 	ourmemory_t unzmem = {0};
@@ -108,23 +172,27 @@ void checkFileMulti(const void *data, size_t size, struct checkRq *rqs, size_t a
 
 		if (strcmp(fname + len - 5, ".html") == 0) {
 			//That's a chapter
-			//Read it
-			//TODO: reduce amount of mallocs
-			buf = malloc(finfo.uncompressed_size + 1);
-			if (unlikely(!buf)) {
-				dprintf(2, "Failed to allocate memory\n");
-				free(buf);
-				break;
-			}
 			ret = unzOpenCurrentFile(story);
 			if (unlikely(ret != UNZ_OK)) {
 				dprintf(2, "Failed to open chapter, skipping\n");
 			} else {
-				//Do read
-				//Heaviest call in function
-				//Over 70% of total time
-				ret = unzReadCurrentFile(story, buf, finfo.uncompressed_size);
-				((char*)buf)[finfo.uncompressed_size] = 0;
+				//Read it if not in cache
+				if(cache == NULL || cache[count] == NULL) {
+					buf = malloc(finfo.uncompressed_size + 1);
+					if (unlikely(buf == NULL)) {
+						dprintf(2, "Failed to allocate memory\n");
+						break;
+					}
+					//Heaviest call in function
+					//Over 70% of total time
+					ret = unzReadCurrentFile(story, buf, finfo.uncompressed_size);
+					((char*)buf)[finfo.uncompressed_size] = 0;
+					cache[count++] = buf;
+				} else {
+					//load from cache
+					ret = 0;
+					buf = cache[count++];
+				}
 				if (ret < 0) {
 					//Error
 					dprintf(2, "Failed to read chapter, skipping\n");
