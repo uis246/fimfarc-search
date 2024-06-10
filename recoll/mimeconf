@@ -1,0 +1,3 @@
+[index]
+application/x-fimfarchive = execm rclzip
+application/epub+zip = execm rclepub1.py
