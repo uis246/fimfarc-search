@@ -10,6 +10,7 @@
 #define ASSOC_PATH "db/assoc.bin"
 #define TAG_PATH "db/tag.bin"
 #define STORY_PATH "db/story.bin"
+#define EXTRA_PATH "db/extra.bin"
 
 enum LogOp {
         AND = 0,
@@ -75,5 +76,5 @@ void arcstat(const char *restrict archive);
 size_t readfile(const char *restrict path, void *restrict *ptr);
 void bufappend(struct stringbuf *restrict buf, const void *restrict data, const size_t size);
 bool checkFile(const void *data, size_t size, const char *text, bool sens);
-void checkFileMulti(const void *data, size_t size, struct checkRq *rqs, size_t amount);
+void checkFileMulti(const void *data, size_t size, struct checkRq *rqs, size_t amount, char **cache);
 int id_sort(const void *a, const void *b);

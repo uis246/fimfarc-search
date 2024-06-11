@@ -51,7 +51,7 @@ return 0;
 //Return true if found pattern
 bool checkFile(const void *data, size_t size, const char *text, bool sens) {
 	struct checkRq rq = {text, sens, false};
-	checkFileMulti(data, size, &rq, 1);
+	checkFileMulti(data, size, &rq, 1, NULL);
 	return rq.ret;
 }
 

@@ -522,7 +522,7 @@ void multisearch(const char *restrict arch, const char *restrict infile) {
 				//htmls = getHtmlCount(buf, file_info.uncompressed_size);
 			}
 			//Ok, now search
-			checkFileMulti(buf, file_info.uncompressed_size, wi->rqs, wi->amount);
+			checkFileMulti(buf, file_info.uncompressed_size, wi->rqs, wi->amount, NULL);
 			for(size_t k = 0; k < wi->amount; k++)
 				if(wi->rqs[k].ret == 1 && !(wi->op[k]->mode == REMOVE)) {
 					addOutput(wi->op[k]->output, id);
