@@ -8,10 +8,35 @@
 
 #define STATE_REPORT 0
 #define PROGRESS_REPORT 0
+#define BUILD_EXTRA 1
 
 #if STATE_REPORT
 static const char *StateName[] =
 {"Reset", "Story", "Tags", "TagInfo", "Archive", "Junk"};
+#endif
+
+// extra db from story state:
+// publishing time - s(t) +
+// update time - s(t) +
+// completion status - s(i) +
+// content rating - s(i) +
+// long description - s +
+// short description - s +
+// likes - i +
+// dislikes - i +
+// comments - i +
+// views - i +
+// tags - i[] +
+
+#if BUILD_EXTRA
+struct exl {
+	struct extra_leaf d;
+	struct stringbuf ld, sd, tags;
+};
+//=3*8+2*8+3*2=5*8+6=46
+uint64_t timeStringParse(const char *in) {
+	return 0;
+}
 #endif
 
 
@@ -76,7 +101,7 @@ void builder() {
 	//Writer data
 	struct stringbuf tagbuf = {0}, story = {0};//result
 
-	FILE *f, *story_bin, *tag_bin, *assoc_bin;
+	FILE *f, *story_bin, *tag_bin, *assoc_bin, *extra_bin;
 	const char *value;
 	uint32_t milestone=0;
 	unsigned int top = 0;
@@ -104,6 +129,10 @@ void builder() {
 	story_bin = fopen(STORY_PATH, "wb");
 	tag_bin = fopen(TAG_PATH, "wb");
 	assoc_bin = fopen(ASSOC_PATH, "wb");
+	#if BUILD_EXTRA
+	extra_bin = fopen(EXTRA_PATH, "wb");
+	struct exl el = {0};
+	#endif
 	//FIXME: check fopen for errors
 	json_open_stream(s, f);
 	json_set_streaming(s, 1);
@@ -156,6 +185,22 @@ void builder() {
 					memcpy(itf->data + parser.title.length, parser.path.data, parser.path.length - 1);
 					#endif
 					fwrite(itf, ITF_SIZE + itf->length, 1, story_bin);
+					#if BUILD_EXTRA
+					//ldlen, sdlen, tagsz, skipbytes
+					el.d.ldlen = el.ld.length;
+					el.d.sdlen = el.sd.length;
+					el.d.tagsz = el.tags.length;
+					el.d.skipbytes = EXL_SIZE + el.d.ldlen + el.d.sdlen + el.d.tagsz;
+					//write
+					fwrite(&el, EXL_SIZE, 1, extra_bin);
+					fwrite(el.ld.data, el.ld.length, 1, extra_bin);
+					fwrite(el.sd.data, el.sd.length, 1, extra_bin);
+					fwrite(el.tags.data, el.tags.length, 1, extra_bin);
+					//reset
+					el.ld.length = 0;
+					el.sd.length = 0;
+					el.tags.length = 0;
+					#endif
 					#if PROGRESS_REPORT
 					//Show progress
 					uint32_t tmp = parser.story_id/2000*2000;
@@ -176,6 +221,7 @@ void builder() {
 					st.story_id = parser.story_id;
 					st.tag_id = tag.id;
 					fwrite(&st, STF_SIZE, 1, assoc_bin);
+					bufappend(&el.tags, &tag.id, sizeof(tag.id));
 					parser.state = Tags;
 				}
 				//
@@ -200,6 +246,34 @@ void builder() {
 				if(parser.state == Story && got_key) {
 					if(strcmp(prev, "title") == 0)
 						strtobuf(&parser.title, value);
+					else if(strcmp(prev, "content_rating") == 0) {
+						if(strcmp(value, "everyone") == 0)
+							el.d.cr = EVERYPONE;
+						else if(strcmp(value, "teen") == 0)
+							el.d.cr = TEEN;
+						else if(strcmp(value, "mature") == 0)
+							el.d.cr = MATURE;
+						else
+							printf("cr: %s\n", value);
+					} else if(strcmp(prev, "completion_status") == 0) {
+						if(strcmp(value, "incomplete") == 0)
+							el.d.complete = INCOMPLETE;
+						else if(strcmp(value, "complete") == 0)
+							el.d.complete = COMPLETE;
+						else if(strcmp(value, "hiatus") == 0)
+							el.d.complete = HIATUS;
+						else if(strcmp(value, "cancelled") == 0)
+							el.d.complete = CANCELLED;
+						else
+							printf("cs: %s\n", value);
+					} else if(strcmp(prev, "date_published") == 0)
+						el.d.ctime = timeStringParse(value);
+					else if(strcmp(prev, "date_updated") == 0)
+						el.d.mtime = timeStringParse(value);
+					else if(strcmp(prev, "description_html") == 0)
+						strtobuf(&el.ld, value);
+					else if(strcmp(prev, "short_description") == 0)
+						strtobuf(&el.sd, value);
 					prev[0]=0;
 					got_key=false;
 					continue;
@@ -235,12 +309,22 @@ void builder() {
 					continue;
 				value = json_get_string(s, NULL);
 				if(parser.state == Story && got_key) {
+					uint32_t id = strtoul(value, NULL, 10);
 					if(strcmp(prev, "id") == 0) { 
-						uint32_t id = strtoul(value, NULL, 10);
 						//TODO: replace with assert?
 						if(id != parser.story_id)
 							dprintf(2, "++ID MISMATCH! %u!=%u++\n", parser.story_id, id);
 					}
+					#if BUILD_EXTRA
+					else if(strcmp(prev, "num_likes") == 0)
+						el.d.likes = id;
+					else if(strcmp(prev, "num_dislikes") == 0)
+						el.d.dislikes = id;
+					else if(strcmp(prev, "num_views") == 0)
+						el.d.views = id;
+					else if(strcmp(prev, "num_comments") == 0)
+						el.d.comments = id;
+					#endif
 				}
 				got_key = false;
 				break;

@@ -18,6 +18,18 @@ enum LogOp {
         REMOVE,
 };
 
+enum ComplStatus {
+	INCOMPLETE = 0,
+	COMPLETE,
+	HIATUS,
+	CANCELLED
+};
+enum ContentRating {
+	EVERYPONE = 0,
+	TEEN,
+	MATURE
+};
+
 struct stringbuf {
 	size_t size, length;
 	char *data;
@@ -43,6 +55,16 @@ __attribute((packed)) struct story_tag_file {
 	uint_least16_t tag_id;
 };
 #define STF_SIZE 6
+
+__attribute((packed))  struct extra_leaf {
+	uint32_t id;
+	uint8_t complete, cr;
+	uint16_t skipbytes;//skipbytes is size of entire structure on disk
+	uint64_t ctime, mtime;
+	uint32_t likes, dislikes, comments, views;
+	uint16_t ldlen, sdlen, tagsz;
+};
+#define EXL_SIZE (4 + 2 + 2 + 2*8 + 4*4 + 3*2)
 
 //Format endianess conversion
 #if 0
