@@ -44,6 +44,7 @@ static struct {
 		Loader,//Just loads from text to bin list
 		Multisearch,//Do multiple searches in text in parallel
 		Arcstat,//Very basic statistics of archive
+		Recoll,//Recoll tag reporter
 	} mode;
 	union{
 		struct {
@@ -251,6 +252,8 @@ int main(int argc, char* argv[])
 		args.mode = Multisearch;
 	else if (strcmp(argv[1], "arcstat") == 0)
 		args.mode = Arcstat;
+	else if (strcmp(argv[1], "recoll") == 0)
+		args.mode = Recoll;
 	else {
 		dprintf(2, "Tool %s not found\n", argv[1]);
 		return -1;
@@ -423,6 +426,47 @@ int main(int argc, char* argv[])
 			return -1;
 		}
 		arcstat(argv[2]);
+	} else if(args.mode == Recoll) {
+		if(argc != 3) {
+			printf("Usage: %s recoll ID\n", argv[0]);
+			return -1;
+		}
+		uintptr_t extra, tag;
+		size_t extras, tags;
+		unsigned int id;
+		extras = readfile(EXTRA_PATH, (void*)&extra);
+		tags = readfile(TAG_PATH, (void*)&tag);
+		id = strtoul(argv[2], NULL, 10);
+		//
+		//skip to requested id
+		for(size_t off = 0; off < extras;) {
+			struct extra_leaf *el = extra + off;
+			if(el->id < id) {
+				//next
+				off += el->skipbytes;
+				continue;
+			} else if(el->id > id) {
+				//not found
+				break;
+			}
+			//print
+			// publishing time - s(t)
+			// update time - s(t)
+			printf("dmtime = %010u\n", el->mtime);
+			// completion status - s(i)
+			// content rating - s(i)
+			// long description - s
+			// short description - s
+			// likes - i
+			// dislikes - i
+			// comments - i
+			// views - i
+			// tags - i[]
+			break;
+		}
+		//
+		free(tag);
+		free(extra);
 	} else {
 		dprintf(2, "Tool %s is not implemented\n", argv[1]);
 		return -2;

@@ -301,6 +301,7 @@ void builder() {
 					uint32_t id = strtoul(value, NULL, 10);
 					assert(id > parser.story_id);
 					parser.story_id = id;
+					el.d.id = id;
 					prev[0]=0;
 				}
 				break;
@@ -347,9 +348,13 @@ void builder() {
 		#endif
 	} while(type != JSON_DONE && type != JSON_ERROR);
 	//termination:
+	free(story.data);
 	free(parser.path.data);
 	free(parser.title.data);
 	free(tag.name.data);
+	free(el.ld.data);
+	free(el.sd.data);
+	free(el.tags.data);
 	json_reset(s);
 	json_close(s);
 	//Sort tags
