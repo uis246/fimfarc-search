@@ -160,6 +160,7 @@ bool handle(const struct hdr *paramv, size_t paramc) {
 	const struct hdr *filename, *ipath;
 	int ret;
 	needParam(paramv, paramc, "filename", filename);
+	ipath = findParam(paramv, paramc, "ipath");
 
 	if(filename->length) {
 		// close old file, open new one
@@ -180,11 +181,13 @@ bool handle(const struct hdr *paramv, size_t paramc) {
 			//maybe later
 			abort();
 		}
-		// return self doc
-		addParam(reply, repc, "Document", NULL, 0);
-		addParam(reply, repc, "Mimetype", "text/plain", 10);
-		respond(reply, repc);
-		return true;
+		if(ipath == NULL || ipath->length == 0) {
+			// return self doc
+			addParam(reply, repc, "Document", NULL, 0);
+			addParam(reply, repc, "Mimetype", "text/plain", 10);
+			respond(reply, repc);
+			return true;
+		}
 	}
 	if(archive == NULL) {
 		addParam(reply, repc, "Eofnext", NULL, 0);
@@ -192,7 +195,6 @@ bool handle(const struct hdr *paramv, size_t paramc) {
 		respond(reply, repc);
 		return true;
 	}
-	ipath = findParam(paramv, paramc, "ipath");
 	unz_file_info finfo;
 	char *fname = alloca(2048);
 	if(ipath == NULL || ipath->length == 0) {
@@ -298,7 +300,7 @@ bool handle(const struct hdr *paramv, size_t paramc) {
 		return true;
 	} else {
 		// search by name
-		ret = unzLocateFile(archive, (const char*)filename->data, 1);
+		ret = unzLocateFile(archive, (const char*)ipath->data, 1);
 		if(ret != UNZ_OK) {
 			// not found
 			addParam(reply, repc, "Document", NULL, 0);
@@ -306,6 +308,7 @@ bool handle(const struct hdr *paramv, size_t paramc) {
 			addParam(reply, repc, "filename", NULL, 0);
 			addParam(reply, repc, "Ipath", NULL, 0);
 			respond(reply, repc);
+			return true;
 		}
 		ret = unzGetCurrentFileInfo(archive, &finfo, fname, 2048, NULL, 0, NULL, 0);
 		if(ret != UNZ_OK)
@@ -344,22 +347,6 @@ bool handle(const struct hdr *paramv, size_t paramc) {
 		else
 			filename++;
 		addParam(reply, repc, "filename", filename, strlen(filename));
-		char mtime[21];
-		uint64_t time;
-		{
-			struct tm t;
-			memset(&t, 0, sizeof(t));
-			t.tm_year = finfo.tmu_date.tm_year;
-			t.tm_mon = finfo.tmu_date.tm_mon;
-			t.tm_mday = finfo.tmu_date.tm_mday;
-			t.tm_hour = finfo.tmu_date.tm_hour;
-			t.tm_min = finfo.tmu_date.tm_min;
-			t.tm_sec = finfo.tmu_date.tm_sec;
-			time = mktime(&t);
-		}
-		int len = snprintf(mtime, 21, "%"PRIu64, time);
-		if(len >= 0)
-			addParam(reply, repc, "modificationdate", mtime, len);
 		respond(reply, repc);
 	}
 
