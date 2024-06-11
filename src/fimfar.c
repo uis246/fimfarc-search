@@ -432,10 +432,10 @@ int main(int argc, char* argv[])
 			return -1;
 		}
 		uintptr_t extra, tag;
-		size_t extras, tags;
+		size_t extras, tagsz;
 		unsigned int id;
 		extras = readfile(EXTRA_PATH, (void*)&extra);
-		tags = readfile(TAG_PATH, (void*)&tag);
+		tagsz = readfile(ALTTAG_PATH, (void*)&tag);
 		id = strtoul(argv[2], NULL, 10);
 		//
 		//skip to requested id
@@ -451,22 +451,51 @@ int main(int argc, char* argv[])
 			}
 			//print
 			// publishing time - s(t)
+			printf("dctime = %011"PRIu64"\n", el->ctime);
 			// update time - s(t)
-			printf("dmtime = %010u\n", el->mtime);
+			printf("dmtime = %011"PRIu64"\n", el->mtime);
 			// completion status - s(i)
+			static const char *completions[] = {"incomplete", "complete", "hiatus", "cancelled"};
+			printf("status = %s\n", completions[el->complete]);
 			// content rating - s(i)
+			static const char *ratings[] = {"everyone", "teen", "mature"};
+			printf("rating = %s\n", ratings[el->cr]);
 			// long description - s
+			const char *ld = extra + off + EXL_SIZE, *sd = ld + el->ldlen;
 			// short description - s
 			// likes - i
 			// dislikes - i
 			// comments - i
 			// views - i
 			// tags - i[]
+			size_t count = el->tagsz/sizeof(uint32_t), found = 0;
+			if(!count)
+				break;
+			uint32_t *tags = alloca(el->tagsz);
+			memcpy(tags, sd + el->sdlen, el->tagsz);
+			qsort(tags, count, sizeof(uint32_t), id_sort);
+			printf("keywords =");
+			for(size_t off = 0, i = 0; off < tagsz && i < count;) {
+				const struct id_text_file *itf = (struct id_text_file*)(tag + off);
+				if(itf->id == tags[i]) {
+					//print
+					printf(" %.*s", itf->length, itf->data);
+					i++;
+				} else if(itf->id < tags[i]) {
+					//not there yet
+				} else if(itf->id > tags[i]) {
+					//too much
+					i++;
+					continue;
+				}
+				off += ITF_SIZE + itf->length;
+			}
+			printf("\n");
 			break;
 		}
 		//
-		free(tag);
-		free(extra);
+		free((void*)tag);
+		free((void*)extra);
 	} else {
 		dprintf(2, "Tool %s is not implemented\n", argv[1]);
 		return -2;

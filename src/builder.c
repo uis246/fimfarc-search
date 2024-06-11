@@ -5,6 +5,7 @@
 
 #include <sys/mman.h>
 #include <unistd.h>
+#include <time.h>
 
 #define STATE_REPORT 0
 #define PROGRESS_REPORT 0
@@ -35,7 +36,9 @@ struct exl {
 };
 //=3*8+2*8+3*2=5*8+6=46
 uint64_t timeStringParse(const char *in) {
-	return 0;
+	struct tm t;
+	strptime(in, "%Y-%m-%dT%H:%M:%S.%f%z", &t);
+	return mktime(&t);
 }
 #endif
 
@@ -93,15 +96,32 @@ static int tag_sort(const void *a, const void *b) {
 	const struct tag *A = a, *B = b;
 	return A->id - B->id;
 };
+static void writeAndFreeTags(FILE *out, struct stringbuf *tagbuf) {
+	uint32_t milestone = tagbuf->length/sizeof(struct tag);
+	for(uint32_t i = 0; i < milestone; i++) {
+		struct id_text_file *itf;
+		struct tag *tag = (struct tag*)tagbuf->data;
+		itf = alloca(ITF_SIZE + tag[i].name.length - 1);
+		itf->id = tag[i].id;
+		itf->length = tag[i].name.length - 1;
+		memcpy(&itf->data, tag[i].name.data, itf->length);
+		fwrite(itf, 1, ITF_SIZE + itf->length, out);
+	}
+	//Free tags
+	for(uint32_t i = 0; i < milestone; i++) {
+		free(((struct tag*)tagbuf->data)[i].name.data);
+	}
+	tagfreebuf(tagbuf);
+}
 
 void builder() {
 	char prev[32];
 	struct json_stream s[1];
-	struct tag tag = {{0}, 0};
+	struct tag tag = {{0}, 0}, shtag = {{0}, 0};
 	//Writer data
 	struct stringbuf tagbuf = {0}, story = {0};//result
 
-	FILE *f, *story_bin, *tag_bin, *assoc_bin, *extra_bin;
+	FILE *f, *story_bin, *tag_bin, *assoc_bin;
 	const char *value;
 	uint32_t milestone=0;
 	unsigned int top = 0;
@@ -130,7 +150,10 @@ void builder() {
 	tag_bin = fopen(TAG_PATH, "wb");
 	assoc_bin = fopen(ASSOC_PATH, "wb");
 	#if BUILD_EXTRA
+	FILE *extra_bin, *alttag_bin;
 	extra_bin = fopen(EXTRA_PATH, "wb");
+	alttag_bin = fopen(ALTTAG_PATH, "wb");
+	struct stringbuf alttagbuf = {0};
 	struct exl el = {0};
 	#endif
 	//FIXME: check fopen for errors
@@ -216,6 +239,7 @@ void builder() {
 				else if(parser.state == TagInfo) {
 					//Push tag info
 					tagtobuf(&tagbuf, &tag);
+					tagtobuf(&alttagbuf, &shtag);
 					//Add tag to story
 					struct story_tag_file st;
 					st.story_id = parser.story_id;
@@ -291,10 +315,13 @@ void builder() {
 				} else if(parser.state == TagInfo) {
 					type = json_next(s);
 					assert(type == JSON_STRING || type == JSON_NUMBER);
-					if(strcmp(prev, "id") == 0)
+					if(strcmp(prev, "id") == 0) {
 						tag.id = strtoul(value, NULL, 10);
-					else if(strcmp(prev, "name") == 0)
+						shtag.id = tag.id;
+					} else if(strcmp(prev, "name") == 0)
 						strtobuf(&tag.name, value);
+					else if(strcmp(prev, "url") == 0)
+						strtobuf(&shtag.name, strrchr(value, '/') + 1);
 				}
 				if(top == 1 && parser.state == Reset) {
 					//We can fill story id later, but let's do it now
@@ -360,20 +387,7 @@ void builder() {
 	//Sort tags
 	milestone = tagbuf.length/sizeof(tag);
 	qsort(tagbuf.data, milestone, sizeof(tag), tag_sort);
-	//Write tags
-	for(uint32_t i = 0; i < milestone; i++) {
-		struct id_text_file *itf;
-		struct tag *tag = (struct tag*)tagbuf.data;
-		itf = alloca(ITF_SIZE + tag[i].name.length - 1);
-		itf->id = tag[i].id;
-		itf->length = tag[i].name.length - 1;
-		memcpy(&itf->data, tag[i].name.data, itf->length);
-		fwrite(itf, 1, ITF_SIZE + itf->length, tag_bin);
-	}
-	//Free tags
-	for(uint32_t i = 0; i < milestone; i++) {
-		free(((struct tag*)tagbuf.data)[i].name.data);
-	}
-	tagfreebuf(&tagbuf);
+	qsort(alttagbuf.data, milestone, sizeof(tag), tag_sort);
+	writeAndFreeTags(tag_bin, &tagbuf);
+	writeAndFreeTags(alttag_bin, &alttagbuf);
 }
-

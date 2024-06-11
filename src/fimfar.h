@@ -11,6 +11,7 @@
 #define TAG_PATH "db/tag.bin"
 #define STORY_PATH "db/story.bin"
 #define EXTRA_PATH "db/extra.bin"
+#define ALTTAG_PATH "db/alttag.bin"
 
 enum LogOp {
         AND = 0,
