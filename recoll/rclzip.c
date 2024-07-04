@@ -86,7 +86,10 @@ static int readhdr(struct hdr *hdr) {
 // handler returns true if no errors happened
 bool handle(const struct hdr *paramv, size_t paramc);
 
+static uint64_t maxsizekb;
+
 int main(/*int argc, char* argv[], char* envp[]*/) {
+	maxsizekb = atoll(getenv("RECOLL_FILTER_MAXMEMBERKB"));
 	//I'll do like python implementation
 	struct hdr params[10];
 	while(1) {
@@ -130,6 +133,8 @@ int main(/*int argc, char* argv[], char* envp[]*/) {
 			return -1;
 	};
 }
+
+// -- end of shared part --
 
 const struct hdr* findParam(const struct hdr *restrict first, const size_t size, const char *restrict name) {
 	for(size_t i = 0; i < size; i++)
@@ -218,7 +223,8 @@ bool handle(const struct hdr *paramv, size_t paramc) {
 				goto next;
 			// ...
 			// check file size
-			// ...
+			if(finfo.uncompressed_size > maxsizekb * 1024)
+				goto next;
 
 			// check passed, sending file
 			const char *filename = strrchr(fname, '/');
