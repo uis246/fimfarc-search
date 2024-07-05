@@ -332,7 +332,7 @@ bool handle(const struct hdr *paramv, size_t paramc) {
 			return false;
 		}
 		ret = unzOpenCurrentFile(archive);
-		if(ret < 0) {
+		if(ret != UNZ_OK) {
 			// archive damaged
 			free(buf);
 			unzClose(archive);
@@ -343,6 +343,7 @@ bool handle(const struct hdr *paramv, size_t paramc) {
 		if(ret < 0) {
 			// archive damaged
 			free(buf);
+			unzCloseCurrentFile(archive);
 			unzClose(archive);
 			archive = NULL;
 			return false;
