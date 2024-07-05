@@ -89,7 +89,10 @@ bool handle(const struct hdr *paramv, size_t paramc);
 static uint64_t maxsizekb;
 
 int main(/*int argc, char* argv[], char* envp[]*/) {
-	maxsizekb = atoll(getenv("RECOLL_FILTER_MAXMEMBERKB"));
+	{
+	const char *mskb = getenv("RECOLL_FILTER_MAXMEMBERKB");
+	maxsizekb = mskb != NULL ? atoll(mskb) : UINT32_MAX;
+	}
 	//I'll do like python implementation
 	struct hdr params[10];
 	while(1) {
