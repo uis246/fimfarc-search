@@ -122,7 +122,7 @@ uint32_t getHtmlCount(const void *data, size_t size) {
 void checkFileMulti(const void *data, size_t size, struct checkRq *rqs, size_t amount, char **cache) {
 	unzFile *story;
 	char *fname;
-	void *buf;// size_t bsize = 0;
+	void *buf = NULL;// size_t bsize = 0;
 	uint32_t count = 0;
 	int ret;
 	zlib_filefunc_def filefunc = { 0 };
