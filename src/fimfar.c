@@ -45,6 +45,7 @@ static struct {
 		Multisearch,//Do multiple searches in text in parallel
 		Arcstat,//Very basic statistics of archive
 		Recoll,//Recoll tag reporter
+		Builder_fb,//Builds db for ficbook
 	} mode;
 	union{
 		struct {
@@ -232,7 +233,7 @@ int main(int argc, char* argv[])
 {
 	if (argc < 2) {
 		dprintf(2, "Select one tool:\n"
-		"\tbuild\n\tname\n\tselect\n\tsearch\n\tmerge\n\tload\n\tmake\n\tarcstat\n");
+		"\tbuild\n\tname\n\tselect\n\tsearch\n\tmerge\n\tload\n\tmake\n\tarcstat\n\tbuild-fb\n");
 		return -1;
 	}
 
@@ -254,6 +255,8 @@ int main(int argc, char* argv[])
 		args.mode = Arcstat;
 	else if (strcmp(argv[1], "recoll") == 0)
 		args.mode = Recoll;
+	else if (strcmp(argv[1], "build-fb") == 0)
+		args.mode = Builder_fb;
 	else {
 		dprintf(2, "Tool %s not found\n", argv[1]);
 		return -1;
@@ -496,6 +499,9 @@ int main(int argc, char* argv[])
 		//
 		free((void*)tag);
 		free((void*)extra);
+	} else if(args.mode == Builder_fb) {
+		void builder_fb();
+		builder_fb();
 	} else {
 		dprintf(2, "Tool %s is not implemented\n", argv[1]);
 		return -2;

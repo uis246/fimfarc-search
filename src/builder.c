@@ -3,28 +3,6 @@
 
 #include <sys/mman.h>
 
-#define STATE_REPORT 0
-#define PROGRESS_REPORT 0
-#define BUILD_EXTRA 1
-
-#if STATE_REPORT
-static const char *StateName[] =
-{"Reset", "Story", "Tags", "TagInfo", "Archive", "Junk"};
-#endif
-
-// extra db from story state:
-// publishing time - s(t) +
-// update time - s(t) +
-// completion status - s(i) +
-// content rating - s(i) +
-// long description - s +
-// short description - s +
-// likes - i +
-// dislikes - i +
-// comments - i +
-// views - i +
-// tags - i[] +
-
 void bufalloc(struct stringbuf *buf) {
 	if(buf->size < buf->length) {
 		free(buf->data);
@@ -39,6 +17,16 @@ void strtobuf(struct stringbuf *buf, const char *string) {
 	bufalloc(buf);
 	//Do copy
 	memcpy(buf->data, string, buf->length);
+}
+
+void strmemtobuf(struct stringbuf *restrict buf, const void *data, size_t size) {
+	//Copy and add NULL-terminator
+	buf->length = size + 1;
+	//Check buffer size
+	bufalloc(buf);
+	//Do copy
+	memcpy(buf->data, data, size);
+	buf->data[size] = 0;
 }
 
 #define TAG_PAGE_SIZE 4096*8
