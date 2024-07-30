@@ -10,14 +10,6 @@ void bufalloc(struct stringbuf *buf) {
 		buf->size = buf->length;
 	}
 }
-void strtobuf(struct stringbuf *buf, const char *string) {
-	//Copy with NULL-terminator
-	buf->length = strlen(string)+1;
-	//Check buffer size
-	bufalloc(buf);
-	//Do copy
-	memcpy(buf->data, string, buf->length);
-}
 
 void strmemtobuf(struct stringbuf *restrict buf, const void *data, size_t size) {
 	//Copy and add NULL-terminator

@@ -125,6 +125,81 @@ struct parser {
 	struct stringbuf linkid, title;
 };
 
+static const XML_Char* getAtt(const XML_Char **atts, const char *att) {
+	for(size_t i = 0; atts[i]; i+=2) {
+		if(strcmp(att, atts[i]) != 0)
+			continue;
+		else
+			return atts[i + 1];
+	}
+	return NULL;
+}
+
+//return true to stop processing tokens
+typedef bool (*forEachCallback)(struct parser *const restrict p, size_t len, const char start[restrict static len]);
+
+static void forEachTok(struct parser *const restrict p, const XML_Char *in, const char delim, forEachCallback cb) {
+	const size_t totallen = strlen(in);
+	const char *const end = in + totallen;
+	for(const char *cursor = in; *cursor;) {
+		//skip empty substrings
+		for(; *cursor == delim; cursor++);
+		//check if we still didn't hit end
+		if(!*cursor)
+			break;
+		const char *next = strchr(cursor + 1, delim);
+		if(!next)
+			next = end;
+		if(cb(p, next - cursor, cursor))
+			break;
+		cursor = next;
+	}
+}
+
+static bool divClassesMain (struct parser *const restrict p, size_t n, const char start[restrict static n]) {
+	if(strncmp(start, "side-section", n) == 0)
+		p->junk_depth = 0;
+	else
+		return false;
+	return true;
+}
+
+static bool maininfoParse(struct parser *const restrict p, const XML_Char *name, const XML_Char **atts) {
+	uint8_t depth = p->current_depth - 1;
+	if(depth == 4) {
+		if(strcmp(name, "div") == 0) {
+			//get class info
+			const XML_Char *class;
+			class = getAtt(atts, "class");
+			if(!class)
+				return true;
+			p->junk_depth = 1;
+			//iterate over classes
+			forEachTok(p, class, ' ', divClassesMain);
+		} else if(strcmp(name, "dl") == 0) {
+			//no need in class info
+			//not marking as junk
+		} else
+			p->junk_depth++;
+	} else if(depth == 5) {
+		//we are in one of dls
+		if(strcmp(name, "fanfic-more-dropdown") == 0) {
+			const char *fid;
+			char *endptr;
+			fid = getAtt(atts, ":fanfic-id");
+			if(!fid)
+				return true;
+			long long id;
+			id = strtoll(fid, &endptr, 10);
+			if(*endptr || id > UINT32_MAX)
+				return true;
+			p->story_id = id;
+		}
+		p->junk_depth++;
+	}
+	return false;
+}
+
 static void XMLCALL startElement(void *userData, const XML_Char *name, const XML_Char **atts) {
 	struct parser *const parser = userData;
 
@@ -160,28 +235,24 @@ static void XMLCALL startElement(void *userData, const XML_Char *name, const XML
 				goto stop;
 			break;
 		case MainInfo:
-			parser->junk_depth++;
-			if(strcmp(name, "div") == 0) {
-				//
-			} else if(strcmp(name, "dl") == 0) {
-				//
-			}
+			if(maininfoParse(parser, name, atts))
+				goto stop;
 			break;
 		case Title:
 			if(strcmp(name, "a") == 0) {
 				//get linkid
-				for(size_t i = 0; atts[i]; i+=2) {
-					if(strcmp("href", atts[i]) != 0)
-						continue;
-					if(strncmp("/readfic/", atts[i + 1], 9) != 0)
-						goto stop;
-					const char *ref = atts[i + 1] + 9, *eref = strrchr(ref, '?');
-					// For now just print resulting href
-					if(eref)
-						strmemtobuf(&parser->linkid, ref, eref - ref);
-					else
-						strtobuf(&parser->linkid, ref);
-				}
+				const XML_Char *href;
+				href = getAtt(atts, "href");
+				if(!href)
+					//what?
+					goto stop;
+				if(strncmp("/readfic/", href, 9) != 0)
+					goto stop;
+				const char *ref = href + 9, *eref = strrchr(ref, '?');
+				if(eref)
+					strmemtobuf(&parser->linkid, ref, eref - ref);
+				else
+					strtobuf(&parser->linkid, ref);
 			} else
 				//huh?
 				goto stop;
@@ -216,10 +287,12 @@ static void XMLCALL endElement(void *userData, const XML_Char *name) {
 		switch(state) {
 		case Story:
 			if(depth == 2) {
+				//should I check for incomplete info?
 				//emit story info
-				printf("%s\n", parser->linkid.data);
+				printf("%"PRIu32" %s\n", parser->story_id, parser->linkid.data);
 				//move to reset state
 				parser->state = Reset;
+				//reset parsed story?
 			}
 			break;
 		case MainInfo:
@@ -232,7 +305,29 @@ static void XMLCALL endElement(void *userData, const XML_Char *name) {
 			if(depth == 5)
 				parser->state = MainInfo;
 			break;
+		case TagInfo:
+			//emit tag info
+			//...
+			parser->state = Tags;
+			break;
 		}
+	}
+}
+
+static void charData(void *userData, const XML_Char *s, int len) {
+	struct parser *const p = userData;
+	switch(p->state) {
+		case Title:
+			//strmemtobuf(&p->title, s, len - 1);
+			break;
+		case TagInfo:
+			break;
+		case Likes:
+		case Rewards:
+			break;
+		default:
+			//just noop
+			break;
 	}
 }
 
@@ -264,6 +359,7 @@ void builder_fb() {
 
 	XML_SetUserData(parser, &parsestate);
 	XML_SetElementHandler(parser, startElement, endElement);
+	XML_SetCharacterDataHandler(parser, charData);
 
 	XML_Parse(parser, "<articles>", strlen("<articles>"), 0);
 	do {
@@ -287,7 +383,9 @@ void builder_fb() {
 		done |= parsebuf(parser, (int)len, 0);
 	} while (!done);
 	XML_Parse(parser, "</articles>", strlen("</articles>"), 1);
-
 	XML_ParserFree(parser);
+
+	free(parsestate.linkid.data);
+	free(parsestate.title.data);
 	//emit output db
 }
