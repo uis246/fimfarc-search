@@ -48,6 +48,10 @@
 //      |   \amount of rewards
 //      |-div class="side-section"
 //      | |-fanfic-more-dropdown :fanfic-id="$id"
+//      | | |-a
+//      | | | |-picture
+//      | | |   |-source srcset="$cover" (small?)
+//      | | |   |-source srcset="$cover" (big?)
 //      | | |-(junk)
 //      | |-(hot junk)
 //      |-dl class="fanfic-inline-info mt-5"
@@ -121,7 +125,7 @@ struct parser {
 	} state;//State machine
 
 	uint8_t current_depth, junk_depth;
-	uint32_t story_id;
+	uint32_t story_id, likes, rewards, pages;
 	struct stringbuf linkid, title;
 };
 
@@ -156,10 +160,16 @@ static void forEachTok(struct parser *const restrict p, const XML_Char *in, cons
 	}
 }
 
-static bool divClassesMain (struct parser *const restrict p, size_t n, const char start[restrict static n]) {
-	if(strncmp(start, "side-section", n) == 0)
+static bool divClassesMain (struct parser *const restrict p, size_t n, const char token[restrict static n]) {
+	if(strncmp(token, "side-section", n) == 0) {
 		p->junk_depth = 0;
-	else
+	} else if(strncmp(token, "badge-like", n) == 0) {
+		p->junk_depth = 0;
+		p->state = Likes;
+	} else if(strncmp(token, "badge-reward", n) == 0) {
+		p->junk_depth = 0;
+		p->state = Rewards;
+	} else
 		return false;
 	return true;
 }
@@ -257,6 +267,10 @@ static void XMLCALL startElement(void *userData, const XML_Char *name, const XML
 				//huh?
 				goto stop;
 			break;
+		case Likes:
+		case Rewards:
+			//noop
+			break;
 	}
 	return;
 
@@ -264,6 +278,9 @@ static void XMLCALL startElement(void *userData, const XML_Char *name, const XML
 	fprintf(stderr, "Stopped parser at depth %u\n", depth);
 	XML_StopParser(parser->p, XML_FALSE);
 }
+
+static struct stringbuf tmpcharbuf = {0};
+
 static void XMLCALL endElement(void *userData, const XML_Char *name) {
 	struct parser *const parser = userData;
 	(void)name;
@@ -289,10 +306,14 @@ static void XMLCALL endElement(void *userData, const XML_Char *name) {
 			if(depth == 2) {
 				//should I check for incomplete info?
 				//emit story info
-				printf("%"PRIu32" %s\n", parser->story_id, parser->linkid.data);
+				printf("%"PRIu32" %s %.*s\n", parser->story_id, parser->linkid.data, parser->title.length - 1, parser->title.data);
 				//move to reset state
 				parser->state = Reset;
 				//reset parsed story?
+				parser->likes = 0;
+				parser->rewards = 0;
+				parser->pages = 0;
+				parser->title.length = 0;
 			}
 			break;
 		case MainInfo:
@@ -302,8 +323,15 @@ static void XMLCALL endElement(void *userData, const XML_Char *name) {
 			break;
 		case Likes:
 		case Rewards:
-			if(depth == 5)
+			if(depth == 5) {
 				parser->state = MainInfo;
+				uint32_t result = (uint32_t)atol(tmpcharbuf.data);
+				if(state == Likes)
+					parser->likes = result;
+				else
+					parser->rewards = result;
+				tmpcharbuf.length = 0;
+			}
 			break;
 		case TagInfo:
 			//emit tag info
@@ -316,14 +344,21 @@ static void XMLCALL endElement(void *userData, const XML_Char *name) {
 
 static void charData(void *userData, const XML_Char *s, int len) {
 	struct parser *const p = userData;
+	if(len == 1 && s[0] == '\n')
+		s = " ";
 	switch(p->state) {
 		case Title:
-			//strmemtobuf(&p->title, s, len - 1);
+			if(len == 1 && s[0] == ' ' && p->title.length == 0)
+				break;
+			strmembufappend(&p->title, s, len);
 			break;
 		case TagInfo:
 			break;
 		case Likes:
 		case Rewards:
+			if(len == 1 && s[0] == ' ' && tmpcharbuf.length == 0)
+				break;
+			strmembufappend(&tmpcharbuf, s, len);
 			break;
 		default:
 			//just noop

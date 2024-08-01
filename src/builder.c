@@ -2,12 +2,15 @@
 #include "builder.h"
 
 #include <sys/mman.h>
+#include <assert.h>
 
 void bufalloc(struct stringbuf *buf) {
 	if(buf->size < buf->length) {
 		free(buf->data);
 		buf->data = malloc(buf->length);
 		buf->size = buf->length;
+		if(!buf->data)
+			abort();
 	}
 }
 
@@ -19,6 +22,29 @@ void strmemtobuf(struct stringbuf *restrict buf, const void *data, size_t size) 
 	//Do copy
 	memcpy(buf->data, data, size);
 	buf->data[size] = 0;
+}
+
+void strmembufappend(struct stringbuf *restrict buf, const void *data, size_t size) {
+	//Fast path for empty buffer
+	if(size == 0)
+		return;
+	if(buf->length == 0) {
+		strmemtobuf(buf, data, size);
+		return;
+	}
+	//buf should be null-terminated
+	assert(buf->data[buf->length - 1] == 0);
+	//Check buffer size
+	if(buf->size < buf->length + size) {
+		buf->size = buf->length + size;
+		buf->data = realloc(buf->data, buf->size);
+		if(!buf->data)
+			abort();
+	}
+	//Do copy
+	memcpy(buf->data + buf->length - 1, data, size);
+	buf->length += size;
+	buf->data[buf->size - 1] = 0;
 }
 
 #define TAG_PAGE_SIZE 4096*8
