@@ -87,28 +87,6 @@
 //        |-div class="wrap word-break urlize-links fanfic-description-text"
 //          \description
 
-//On direction:
-//"Джен"/Gen - no relations
-//"Гет"/Get - regular relations
-//"Слэш"/Slash - gay
-//"Фемслэш"/Femslash - lesbian
-//"Смешанная"/Mixed - combination of above
-//"Другое"/Other - can't be classified as one of above
-
-//On rating:
-//R
-
-//On status:
-//finished = complete
-//in-progress = incomplete
-//frozen = hiatus
-//? = canceled?(does it exist or frozen can mean canceled too?)
-
-//On pairings:
-//"Luna/Celestia" means relationship
-//"Luna" means character Luna
-//"human!Luna" means humanized Luna
-//Format: recpairing = "[$modifier!]$character[/$recpairing]"
 
 struct parser {
 	XML_Parser p;
