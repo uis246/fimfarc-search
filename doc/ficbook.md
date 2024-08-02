@@ -7,6 +7,11 @@ Ficbook is a big russian-speaking fanfic website
 Contents page, can also contain text for single-chapter fanfics
 2. `/readfic/$linkid/$chapterid`
 Chapter page
+3. `/tags/$tagid`
+4. `/pairings/$pairing`
+Character or pairing
+5. `/authors/$userid`
+User profile
 
 ## Direction
 Direction means type of relationship fanfic focuses on.
