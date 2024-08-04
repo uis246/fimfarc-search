@@ -79,15 +79,58 @@ character leaf
 </root>
 ```
 ### Header
-#### Authors
 ```
-|-section
-  |-[div class="hat-creator-container"]
-    |-div class="creator-info"
-      |-a href="/authors/$autorid" class="creator-username" itemprop="author"
-      | \author name
-      |-i class="small-text text-muted"
-        \author type
+header class="head mt-15"
+|-div class="fanfic-main-info"
+| |-hi
+| | \title
+| |-div class="mb-10"
+| | |-[a href="/fanfiction/$fandom"]
+| |   \fandom
+| |-section
+|   |-(badges similar to fanfic-main-info in fandom list)
+|-section class="fanfic-hat"
+  |-section
+    |-div class="sticky-block"
+      |-div class="fanfic-hat-body rounded-block clearfix"
+        |-section
+        | |-[div class="hat-creator-container"]
+        |   |-div class="creator-info"
+        |     |-a href="/authors/$autorid" class="creator-username" itemprop="author"
+        |     | \author name
+        |     |-i class="small-text text-muted"
+        |       \author type
+        |-div
+          |-div class="description word-break"
+            |-div class="mb-5"
+            | |-strong
+            | | \"Пэйринг и персонажи:"
+            | |-div
+            |   |-[a class="pairing-link pairing-highlight" href="/pairings/$pairing"]
+            |     \pairing
+            |-div class="mb-5"
+            | |-(size junk)
+            |-div class="mb-5"
+            | |-strong
+            | | \"Метки:"
+            | |-div class="tags"
+            |   |-a class="tag" href="/tags/$tagid"
+            |     \tag
+            |-div class="mb-5"
+            | |-strong
+            | | \"Описание:"
+            | |-div class="urlized-links js-public-beta-description text-preline" itemprop="description"
+            |   \decsription
+            |-div class="mb-5"
+            | |-strong
+            | | \"Посвящение:"
+            | |-div class="urlized-links js-public-beta-dedication text-preline"
+            | | \dedication
+            |-div class="mb-5"
+              |-strong
+              | \"Примечания:"
+              |-div class="urlized-links js-public-beta-author-comment text-preline"
+                \author's comment
 ```
 ### Contents
 ```
@@ -105,10 +148,13 @@ ul class="list-unstyled list-of-fanfic-parts clearfix"
 |     \reviews
 ```
 ### Chapter
+TODO: pre-chapter and post-chapter author notes
+TODO: references
 ```
 div id="content" class="js-part-text part_text clearfix js-public-beta-text js-bookmark-area" data-is-adult="" itemprop="articleBody"
 |-(text with markup)
 ```
+Chapter id of single-chapter fanfic can be extracted from `input name="part_id" value="$chapterid"`
 ### Fandom fanfic list
 ```
 articles
