@@ -109,3 +109,69 @@ ul class="list-unstyled list-of-fanfic-parts clearfix"
 div id="content" class="js-part-text part_text clearfix js-public-beta-text js-bookmark-area" data-is-adult="" itemprop="articleBody"
 |-(text with markup)
 ```
+### Fandom fanfic list
+```
+articles
+|-[article]
+  |-div (why?)
+    |-h3 class="fanfic-inline-title
+    | |-a href="/readfic/$linkid"
+    |   \title
+    |-div class="fanfic-main-info"
+      |-div class="badge-with-icon small-direction-$gen ..."
+      | |-(junk related to direction)
+      |-div class="badge-with-icon badge-rating-$rating ..."
+      | |-(junk related to rating)
+      |-(div class="badge-with-icon badge-translate")
+      | |-(junk related to translation)
+      |-div class="badge-with-icon badge-status-$status ..."
+      | |-(junk related to status)
+      |-div class="badge-with-icon badge-like ..."
+      | |-(visual junk)
+      | |-span class="badge-text"
+      |   \amount of likes
+      |-div class="badge-with-icon badge-reward ..."
+      | |-(visual junk)
+      | |-span class="badge-text"
+      |   \amount of rewards
+      |-div class="side-section"
+      | |-fanfic-more-dropdown :fanfic-id="$id"
+      | | |-a
+      | | | |-picture
+      | | |   |-source srcset="$cover" (small?)
+      | | |   |-source srcset="$cover" (big?)
+      | | |-(junk)
+      | |-(hot junk)
+      |-dl class="fanfic-inline-info mt-5"
+      | |-dt
+      | |-dd
+      |   |-span class="author word-break"
+      |   | |-a href="/authors/$authorid"
+      |   | | |-junk
+      |   |   \author name
+      |   |-(span class="author word-break" title="Автор оригинального текста")
+      |     |-a href="/translations/by_author?author=$original_author_name">
+      |       |-(junk)
+      |       \original author name
+      |-dl class="fanfic-inline-info"
+      | |-dt
+      | |-dd
+      |   |-[a href="/fanfiction/$fandomtype/$fandomnae"]
+      |     \fandom name
+      |-dl class="fanfic-inline-info"
+      | |-dd
+      |   |-[a class=" pairing-link" href="/pairings/$pairing"]
+      |     \pairing or character name
+      |-dl class="fanfic-inline-info"
+      | |-(size junk, always ignore)
+      |-dl class="fanfic-inline-info"
+      | |-(last update)
+      |-div class="tags"
+      | |-span
+      | |-[a class="tag" href="/tags/$tagid"]
+      | | \tag name
+      | |-span class="show-hidden-tags-btn js-show-hidden-tags"
+      |-div class="fanfic-description"
+        |-div class="wrap word-break urlize-links fanfic-description-text"
+          \description
+```
