@@ -53,3 +53,59 @@ Relationship notation is "character1/character2/character3/..."
 ### In translate
 1. "переводчик" = translator
 2. "сопереводчик" = cotranslator
+
+## XML/DOM trees
+Example tree:
+```
+root
+|-node 1
+| |-subnode 1
+|-node 2
+| \character leaf
+\character leaf
+|-node 3
+\character leaf
+```
+would be xml
+```
+<root>
+<node 1>
+    <subnode 1></subnode>
+</node>
+<node 2>character leaf</node>
+character leaf
+<node 3></node>
+character leaf
+</root>
+```
+### Header
+#### Authors
+```
+|-section
+  |-[div class="hat-creator-container"]
+    |-div class="creator-info"
+      |-a href="/authors/$autorid" class="creator-username" itemprop="author"
+      | \author name
+      |-i class="small-text text-muted"
+        \author type
+```
+### Contents
+```
+ul class="list-unstyled list-of-fanfic-parts clearfix"
+|-[li class="part"]
+| |-a href="/readfic/11115297/28590729#part\_content" class="part-link "
+| | |-div class="part-title word-break"
+| | | |-h3
+| | |   \title
+| | |-(junk)
+| |-div class="part-info"
+|   |-span title="$datetime"
+|   | \datetime
+|   |-a
+|     \reviews
+```
+### Chapter
+```
+div id="content" class="js-part-text part_text clearfix js-public-beta-text js-bookmark-area" data-is-adult="" itemprop="articleBody"
+|-(text with markup)
+```
