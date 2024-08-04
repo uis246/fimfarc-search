@@ -1,0 +1,30 @@
+//Multi-search format
+//SSA
+//Makefile-like
+//
+//Search for Faust case-sensetive and save to searchtags/Faust
+//"searchtags/Faust": 'Faust'
+//
+//Search for Faust case-insensetive and do not save to file
+//faust: "Faust"
+//
+//ingram "ingram": 123 & "Ingram"
+//^       ^        ^      ^
+//|       |        |      Search term
+//|       |        Tag id
+//|       File name
+//Target name
+//
+//<target> <path>: <tag/target> [logop] term/tag/target
+//
+//Load target from file
+//mare = "searchtags/mare"
+//or
+//mare "searchtags/mare" =
+//
+//Every file should not be mentioned more than once
+//Every target should not be mentioned more than once
+//
+//Simplified MSF:
+//<target> <path>: <target> [logop] term
+//<load target> <load path>=
