@@ -148,13 +148,23 @@ ul class="list-unstyled list-of-fanfic-parts clearfix"
 |     \reviews
 ```
 ### Chapter
-TODO: pre-chapter and post-chapter author notes
-TODO: references
-```
-div id="content" class="js-part-text part_text clearfix js-public-beta-text js-bookmark-area" data-is-adult="" itemprop="articleBody"
-|-(text with markup)
-```
 Chapter id of single-chapter fanfic can be extracted from `input name="part_id" value="$chapterid"`
+```
+article class="article mb-15"
+|-div class="part-comment-top mx-10 mx-xs-5"
+| |-strong
+| | \(junk)
+| |-div class="urlized-links js-public-beta-comment-before text-preline"
+|   \pre-chapter notes
+|-div id="content" class="js-part-text part_text clearfix js-public-beta-text js-bookmark-area" data-is-adult="" itemprop="articleBody"
+| \-(chapter text with markup)
+|-div class="part-comment-bottom mx-10 mx-xs-5"
+  |-strong
+  | \(junk)
+  |-div class="urlized-links js-public-beta-comment-after text-preline"
+    \post-chapter notes
+```
+TODO: references
 ### Fandom fanfic list
 ```
 articles
