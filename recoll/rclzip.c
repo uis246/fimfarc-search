@@ -7,16 +7,11 @@
 // would look like:
 // Name1: Len1\nData1Name2: Len2\nData2\n
 
-#include <minizip/unzip.h>
-
 #include <stdio.h>
 #include <stdint.h>
 #include <string.h>
 #include <stdbool.h>
 #include <stdlib.h>
-#include <assert.h>
-#include <inttypes.h>
-#include <time.h>
 
 struct hdr{
 	char *type;
@@ -140,6 +135,8 @@ int main(/*int argc, char* argv[], char* envp[]*/) {
 }
 
 // -- end of shared part --
+// -- part that maybe will be shared --
+#include <inttypes.h>
 
 const struct hdr* findParam(const struct hdr *restrict first, const size_t size, const char *restrict name) {
 	for(size_t i = 0; i < size; i++)
@@ -161,6 +158,11 @@ void respond(const struct hdr *paramv, size_t paramc) {
 	fflush(stdout);
 }
 
+// -- format-specific part --
+#include <minizip/unzip.h>
+
+#include <time.h>
+#include <assert.h>
 bool handle(const struct hdr *paramv, size_t paramc) {
 	static unzFile *archive = NULL;
 	static unz_global_info info;
@@ -280,6 +282,7 @@ bool handle(const struct hdr *paramv, size_t paramc) {
 			addParam(reply, repc, "Document", buf, finfo.uncompressed_size);
 			addParam(reply, repc, "Ipath", fname, len);
 			addParam(reply, repc, "filename", filename, len - (filename - fname));
+			// -- extract metadata --
 			char mtime[21];
 			uint64_t time;
 			{
@@ -295,6 +298,7 @@ bool handle(const struct hdr *paramv, size_t paramc) {
 			int slen = snprintf(mtime, 21, "%"PRIu64, time);
 			if(slen >= 0)
 				addParam(reply, repc, "modificationdate", mtime, slen);
+			// -- end extract metadata --
 
 			ret = unzGoToNextFile(archive);
 			if(ret != UNZ_OK)
