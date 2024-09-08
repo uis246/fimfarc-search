@@ -49,6 +49,7 @@ static int readhdr(struct hdr *hdr) {
 	
 	//TODO: add maximum length
 	hdr->length = atol(delim + 1);
+	//NOTE: can be replaced by editing line
 	char *type = strndup(line, delim - line - 1);
 	free(line);
 	line = NULL;
@@ -132,6 +133,7 @@ int main(/*int argc, char* argv[], char* envp[]*/) {
 			params[i].type = NULL;
 		};
 
+		// stop once error occured
 		if(ret == false)
 			return -1;
 	};
@@ -167,6 +169,7 @@ bool handle(const struct hdr *paramv, size_t paramc) {
 	size_t repc = 0;
 	const struct hdr *filename, *ipath;
 	int ret;
+	bool readnext;
 	needParam(paramv, paramc, "filename", filename);
 	ipath = findParam(paramv, paramc, "ipath");
 
@@ -197,17 +200,31 @@ bool handle(const struct hdr *paramv, size_t paramc) {
 			return true;
 		}
 	}
+	// check if archive is open
 	if(archive == NULL) {
 		addParam(reply, repc, "Eofnext", NULL, 0);
 		addParam(reply, repc, "Fileerror", NULL, 0);
 		respond(reply, repc);
 		return true;
 	}
+	readnext = ipath == NULL || ipath->length == 0;
+	if(!readnext) {
+		// search by name
+		ret = unzLocateFile(archive, (const char*)ipath->data, 1);
+		if(ret != UNZ_OK) {
+			// not found
+			addParam(reply, repc, "Document", NULL, 0);
+			addParam(reply, repc, "Eofnow", NULL, 0);
+			addParam(reply, repc, "filename", NULL, 0);
+			addParam(reply, repc, "Ipath", NULL, 0);
+			respond(reply, repc);
+			return true;
+		}
+	}
 	unz_file_info finfo;
 	char *fname = alloca(2048);
-	if(ipath == NULL || ipath->length == 0) {
+	if(readnext) {
 		// next
-		// TODO: check if archive open
 		// TODO: check if last already was reached
 		do {
 			ret = unzGetCurrentFileInfo(archive, &finfo, fname, 2048, NULL, 0, NULL, 0);
@@ -258,6 +275,7 @@ bool handle(const struct hdr *paramv, size_t paramc) {
 				addParam(reply, repc, "filename", filename, len - (filename - fname));
 				goto docerror;
 			}
+			//TODO: check if CRC is correct
 			unzCloseCurrentFile(archive);
 			addParam(reply, repc, "Document", buf, finfo.uncompressed_size);
 			addParam(reply, repc, "Ipath", fname, len);
@@ -300,7 +318,7 @@ bool handle(const struct hdr *paramv, size_t paramc) {
 			return true;
 			next:
 			ret = unzGoToNextFile(archive);
-		} while(ret == UNZ_OK);
+		} while(ret == UNZ_OK && readnext);
 		addParam(reply, repc, "Eofnow", NULL, 0);
 		respond(reply, repc);
 		// close archive
@@ -308,17 +326,6 @@ bool handle(const struct hdr *paramv, size_t paramc) {
 		archive = NULL;
 		return true;
 	} else {
-		// search by name
-		ret = unzLocateFile(archive, (const char*)ipath->data, 1);
-		if(ret != UNZ_OK) {
-			// not found
-			addParam(reply, repc, "Document", NULL, 0);
-			addParam(reply, repc, "Eofnow", NULL, 0);
-			addParam(reply, repc, "filename", NULL, 0);
-			addParam(reply, repc, "Ipath", NULL, 0);
-			respond(reply, repc);
-			return true;
-		}
 		ret = unzGetCurrentFileInfo(archive, &finfo, fname, 2048, NULL, 0, NULL, 0);
 		if(ret != UNZ_OK)
 			// damaged archive?
