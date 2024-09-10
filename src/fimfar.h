@@ -61,8 +61,8 @@ __attribute((packed))  struct extra_leaf {
 	uint32_t id;
 	uint16_t skipbytes;
 	//skipbytes is size of entire structure on disk
-	uint8_t complete, cr;
-	uint64_t ctime, mtime;
+	uint8_t complete, cr;//CompleteStatus and ContentRating
+	uint64_t ctime, mtime;//create time and update time
 	uint32_t likes, dislikes, comments, views;
 	uint16_t ldlen, sdlen, tagsz;
 };

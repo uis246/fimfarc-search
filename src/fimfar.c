@@ -443,7 +443,7 @@ int main(int argc, char* argv[])
 		//
 		//skip to requested id
 		for(size_t off = 0; off < extras;) {
-			struct extra_leaf *el = extra + off;
+			struct extra_leaf *el = (void*)extra + off;
 			if(el->id < id) {
 				//next
 				off += el->skipbytes;
@@ -464,7 +464,7 @@ int main(int argc, char* argv[])
 			static const char *ratings[] = {"everyone", "teen", "mature"};
 			printf("rating = %s\n", ratings[el->cr]);
 			// long description - s
-			const char *ld = extra + off + EXL_SIZE, *sd = ld + el->ldlen;
+			const char *ld = (uint8_t*)extra + off + EXL_SIZE, *sd = ld + el->ldlen;
 			// short description - s
 			// likes - i
 			// dislikes - i

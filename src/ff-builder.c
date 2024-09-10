@@ -153,6 +153,7 @@ void builder() {
 					fwrite(&el, EXL_SIZE, 1, extra_bin);
 					fwrite(el.ld.data, el.ld.length, 1, extra_bin);
 					fwrite(el.sd.data, el.sd.length, 1, extra_bin);
+					//TODO: presort tags
 					fwrite(el.tags.data, el.tags.length, 1, extra_bin);
 					//reset
 					el.ld.length = 0;
@@ -180,7 +181,9 @@ void builder() {
 					st.story_id = parser.story_id;
 					st.tag_id = tag.id;
 					fwrite(&st, STF_SIZE, 1, assoc_bin);
+					#if BUILD_EXTRA
 					bufappend(&el.tags, &tag.id, sizeof(tag.id));
+					#endif
 					parser.state = Tags;
 				}
 				//
