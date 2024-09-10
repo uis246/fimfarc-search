@@ -133,6 +133,10 @@ void builder() {
 				} else if(parser.state == Story) {
 					//Push story
 					struct id_text_file *itf;
+					uint32_t l;
+					//Exclude bullshit stories
+					//TODO: do not hardcode excluded stories
+					if(parser.story_id != 221463 && /*parser.story_id != 234296 &&*/ parser.story_id != 363931) {
 					story.length = 4 + 1 + parser.title.length + (STORE_PATH ? parser.path.length : 0) - 1;
 					bufalloc(&story);
 					itf = (struct id_text_file*)story.data;
@@ -145,16 +149,33 @@ void builder() {
 					fwrite(itf, ITF_SIZE + itf->length, 1, story_bin);
 					#if BUILD_EXTRA
 					//ldlen, sdlen, tagsz, skipbytes
+					if(el.ld.length > UINT16_MAX) {
+						printf("Story %"PRIu32" description is too long\n", parser.story_id);
+						el.ld.length = 0;
+					}
+					if(el.sd.length > UINT16_MAX) {
+						printf("Story %"PRIu32" short description is too long\n", parser.story_id);
+						el.ld.length = 0;
+					}
+					if(el.tags.length > UINT16_MAX) {
+						printf("Story %"PRIu32" has too many tags\n", parser.story_id);
+						el.ld.length = 0;
+					}
 					el.d.ldlen = el.ld.length;
 					el.d.sdlen = el.sd.length;
 					el.d.tagsz = el.tags.length;
+					l = EXL_SIZE + el.ld.length + el.sd.length + el.tags.length;
 					el.d.skipbytes = EXL_SIZE + el.d.ldlen + el.d.sdlen + el.d.tagsz;
+					if(el.d.skipbytes == 0 || l >= UINT16_MAX) {
+						fprintf(stderr, "Can't write story %u, too long\n", itf->id);
+						exit(-1);
+					}
 					//write
 					fwrite(&el, EXL_SIZE, 1, extra_bin);
-					fwrite(el.ld.data, el.ld.length, 1, extra_bin);
-					fwrite(el.sd.data, el.sd.length, 1, extra_bin);
+					fwrite(el.ld.data, el.d.ldlen, 1, extra_bin);
+					fwrite(el.sd.data, el.d.sdlen, 1, extra_bin);
 					//TODO: presort tags
-					fwrite(el.tags.data, el.tags.length, 1, extra_bin);
+					fwrite(el.tags.data, el.d.tagsz, 1, extra_bin);
 					//reset
 					el.ld.length = 0;
 					el.sd.length = 0;
@@ -169,6 +190,7 @@ void builder() {
 					}
 					//printf("Got story %"PRIu32" with title \"%s\"\nAccesable by path: %s\n", parser.story_id, parser.title.data, parser.path.data);
 					#endif
+					}
 					parser.state = Reset;
 				} else if(parser.state == Archive)
 					parser.state = Story;
