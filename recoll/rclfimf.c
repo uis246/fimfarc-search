@@ -46,7 +46,7 @@ void respond(const struct hdr *paramv, size_t paramc) {
 #include <time.h>
 #include <assert.h>
 
-void initHandler(int argc, char *argv[]) {}
+void initHandler(int argc, char *argv[]) {(void)argc;(void)argv;}
 
 #define closeArchive() {unzClose(archive); archive = NULL; if(meta) {munmap(meta, metasize); meta = NULL;}}
 
@@ -54,7 +54,7 @@ bool handle(const struct hdr *paramv, size_t paramc) {
 	static unzFile *archive = NULL;
 	static unz_global_info info;
 	static uint8_t *meta = NULL;
-	static size_t metasize;
+	static off_t metasize;
 
 	struct hdr reply[10];
 	size_t repc = 0;
@@ -92,20 +92,24 @@ bool handle(const struct hdr *paramv, size_t paramc) {
 			addParam(reply, repc, "Document", NULL, 0);
 			addParam(reply, repc, "Mimetype", "text/plain", 10);
 			respond(reply, repc);
+			// self doc is only returned during indexing. I think.
+			// open metadata file
+			//NOTE: assuming char is 1 byte long
+			char *metaname = strndup((char*)filename->data, filename->length + 4);
+			strcat(metaname, ".bin");
+			int fd = open(metaname, O_RDONLY);
+			free(metaname);
+			if(fd != -1) {
+				// get size
+				struct stat sb;
+				fstat(fd, &sb);
+				metasize = sb.st_size;
+				// map
+				if(metasize <= UINT32_MAX)
+					meta = mmap(NULL, metasize, PROT_READ, MAP_SHARED, fd, 0);
+				close(fd);
+			}
 			return true;
-		}
-		// open metadata file
-		char *metaname = strcat(filename->data, ".bin");
-		int fd = open(metaname, 0, O_RDONLY);
-		free(metaname);
-		if(fd != -1) {
-			// get size
-			struct stat sb;
-			fstat(fd, &sb);
-			metasize = sb.st_size;
-			// map
-			meta = mmap(NULL, metasize, PROT_READ, MAP_SHARED, fd, 0);
-			close(fd);
 		}
 	}
 	// check if archive is open
@@ -163,8 +167,7 @@ bool handle(const struct hdr *paramv, size_t paramc) {
 			void *buf = malloc(finfo.uncompressed_size);
 			if(buf == NULL) {
 				// out of memory
-				unzClose(archive);
-				archive = NULL;
+				closeArchive();
 				return false;
 			}
 			ret = unzOpenCurrentFile(archive);
@@ -190,7 +193,7 @@ bool handle(const struct hdr *paramv, size_t paramc) {
 			addParam(reply, repc, "filename", filename, len - (filename - fname));
 			// -- extract metadata --
 			// if metadata file is open
-			if(meta) {
+			if(meta != NULL) {
 				struct extra_leaf *thismeta = (void*)meta;
 				uint8_t *tmpmeta = meta;
 				// get id
@@ -235,8 +238,7 @@ bool handle(const struct hdr *paramv, size_t paramc) {
 		addParam(reply, repc, "Eofnow", NULL, 0);
 		respond(reply, repc);
 		// close archive
-		unzClose(archive);
-		archive = NULL;
+		closeArchive();
 		return true;
 	} else {
 		ret = unzGetCurrentFileInfo(archive, &finfo, fname, 2048, NULL, 0, NULL, 0);
