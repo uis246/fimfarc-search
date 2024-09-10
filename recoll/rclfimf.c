@@ -46,6 +46,17 @@ void respond(const struct hdr *paramv, size_t paramc) {
 #include <time.h>
 #include <assert.h>
 
+static const char *statuses[] = {
+	"incomplete",
+	"complete",
+	"hiatus",
+	"cancelled"
+}, *ratings[] = {
+	"everypony",
+	"teen",
+	"mature"
+};
+
 void initHandler(int argc, char *argv[]) {(void)argc;(void)argv;}
 
 #define closeArchive() {unzClose(archive); archive = NULL; if(meta) {munmap(meta, metasize); meta = NULL;}}
@@ -205,10 +216,24 @@ bool handle(const struct hdr *paramv, size_t paramc) {
 				}
 				if(thismeta) {
 					// found, add tags
-					char mtime[21];
+					char mtime[21], ctime[21];
 					int slen = snprintf(mtime, 21, "%"PRIu64, thismeta->mtime);
 					if(slen >= 0)
 						addParam(reply, repc, "modificationdate", mtime, slen);
+					slen = snprintf(ctime, 21, "%"PRIu64, thismeta->ctime);
+					if(slen >= 0)
+						addParam(reply, repc, "dctime", ctime, slen);
+					// validate
+					uint8_t idx = thismeta->complete;
+					if(idx >= sizeof(statuses)/sizeof(*statuses))
+						//fuck it, crash
+						abort();
+					addParam(reply, repc, "status", statuses[idx], strlen(statuses[idx]));
+					idx = thismeta->cr;
+					if(idx >= sizeof(ratings)/sizeof(*ratings))
+						//fuck it, crash
+						abort();
+					addParam(reply, repc, "rating", ratings[idx], strlen(ratings[idx]));
 				}
 			}
 			// -- end extract metadata --
