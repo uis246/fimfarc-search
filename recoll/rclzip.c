@@ -43,6 +43,8 @@ void respond(const struct hdr *paramv, size_t paramc) {
 
 void initHandler(int argc, char *argv[]) {}
 
+#define closeArchive() {unzClose(archive); archive = NULL;}
+
 bool handle(const struct hdr *paramv, size_t paramc) {
 	static unzFile *archive = NULL;
 	static unz_global_info info;
@@ -59,7 +61,7 @@ bool handle(const struct hdr *paramv, size_t paramc) {
 		// close old file, open new one
 		if(archive != NULL) {
 			// close
-			unzClose(archive);
+			closeArchive();
 		}
 		// open file
 		archive = unzOpen64(filename->data);
@@ -137,8 +139,7 @@ bool handle(const struct hdr *paramv, size_t paramc) {
 			void *buf = malloc(finfo.uncompressed_size);
 			if(buf == NULL) {
 				// out of memory
-				unzClose(archive);
-				archive = NULL;
+				closeArchive();
 				return false;
 			}
 			ret = unzOpenCurrentFile(archive);
@@ -186,8 +187,7 @@ bool handle(const struct hdr *paramv, size_t paramc) {
 			respond(reply, repc);
 			free(buf);
 			if(ret != UNZ_OK) {
-				unzClose(archive);
-				archive = NULL;
+				closeArchive();
 			}
 			return true;
 			docerror:
@@ -206,8 +206,7 @@ bool handle(const struct hdr *paramv, size_t paramc) {
 		addParam(reply, repc, "Eofnow", NULL, 0);
 		respond(reply, repc);
 		// close archive
-		unzClose(archive);
-		archive = NULL;
+		closeArchive();
 		return true;
 	} else {
 		ret = unzGetCurrentFileInfo(archive, &finfo, fname, 2048, NULL, 0, NULL, 0);
@@ -218,16 +217,14 @@ bool handle(const struct hdr *paramv, size_t paramc) {
 		void *buf = malloc(finfo.uncompressed_size);
 		if(buf == NULL) {
 			// out of memory
-			unzClose(archive);
-			archive = NULL;
+			closeArchive();
 			return false;
 		}
 		ret = unzOpenCurrentFile(archive);
 		if(ret != UNZ_OK) {
 			// archive damaged
 			free(buf);
-			unzClose(archive);
-			archive = NULL;
+			closeArchive();
 			return false;
 		}
 		ret = unzReadCurrentFile(archive, buf, finfo.uncompressed_size);
@@ -235,8 +232,7 @@ bool handle(const struct hdr *paramv, size_t paramc) {
 			// archive damaged
 			free(buf);
 			unzCloseCurrentFile(archive);
-			unzClose(archive);
-			archive = NULL;
+			closeArchive();
 			return false;
 		}
 		unzCloseCurrentFile(archive);
