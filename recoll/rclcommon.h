@@ -12,6 +12,7 @@ struct hdr{
 
 // handler returns true if no errors happened
 bool handle(const struct hdr *paramv, size_t paramc);
+void initHandler(int argc, char *argv[]);
 
 // maximal size of output file
 extern uint64_t maxsizekb;

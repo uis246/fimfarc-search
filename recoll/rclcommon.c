@@ -66,11 +66,12 @@ static int readhdr(struct hdr *hdr) {
 
 uint64_t maxsizekb;
 
-int main(/*int argc, char* argv[], char* envp[]*/) {
+int main(int argc, char* argv[]) {
 	{
 	const char *mskb = getenv("RECOLL_FILTER_MAXMEMBERKB");
 	maxsizekb = mskb != NULL ? atoll(mskb) : UINT32_MAX;
 	}
+	initHandler(argc, argv);
 	//I'll do like python implementation
 	struct hdr params[10];
 	while(1) {

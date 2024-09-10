@@ -40,6 +40,9 @@ void respond(const struct hdr *paramv, size_t paramc) {
 
 #include <time.h>
 #include <assert.h>
+
+void initHandler(int argc, char *argv[]) {}
+
 bool handle(const struct hdr *paramv, size_t paramc) {
 	static unzFile *archive = NULL;
 	static unz_global_info info;
