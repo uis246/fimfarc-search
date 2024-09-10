@@ -59,13 +59,13 @@ static const char *statuses[] = {
 
 void initHandler(int argc, char *argv[]) {(void)argc;(void)argv;}
 
-#define closeArchive() {unzClose(archive); archive = NULL; if(meta) {munmap(meta, metasize); meta = NULL;}}
+#define closeArchive() {unzClose(archive); archive = NULL; if(meta) {munmap(meta, metasize); meta = NULL;} if(tags) {munmap(tags, tagsize); tags = NULL;}}
 
 bool handle(const struct hdr *paramv, size_t paramc) {
 	static unzFile *archive = NULL;
 	static unz_global_info info;
-	static uint8_t *meta = NULL;
-	static off_t metasize;
+	static uint8_t *meta = NULL, *tags = NULL;
+	static off_t metasize, tagsize;
 
 	struct hdr reply[10];
 	size_t repc = 0;
@@ -107,18 +107,20 @@ bool handle(const struct hdr *paramv, size_t paramc) {
 			// open metadata file
 			//NOTE: assuming char is 1 byte long
 			char *metaname = strndup((char*)filename->data, filename->length + 4);
-			strcat(metaname, ".bin");
-			int fd = open(metaname, O_RDONLY);
-			free(metaname);
-			if(fd != -1) {
-				// get size
-				struct stat sb;
-				fstat(fd, &sb);
-				metasize = sb.st_size;
-				// map
-				if(metasize <= UINT32_MAX)
-					meta = mmap(NULL, metasize, PROT_READ, MAP_SHARED, fd, 0);
-				close(fd);
+			if(metaname) {
+				strcat(metaname, ".bin");
+				int fd = open(metaname, O_RDONLY);
+				free(metaname);
+				if(fd != -1) {
+					// get size
+					struct stat sb;
+					fstat(fd, &sb);
+					metasize = sb.st_size;
+					// map
+					if(metasize <= UINT32_MAX)
+						meta = mmap(NULL, metasize, PROT_READ, MAP_SHARED, fd, 0);
+					close(fd);
+				}
 			}
 			return true;
 		}
@@ -175,6 +177,15 @@ bool handle(const struct hdr *paramv, size_t paramc) {
 				filename = fname;
 			else
 				filename++;
+			const char *fileid = strrchr(filename, '-');
+			if(fileid == NULL)
+				fileid = filename;
+			else
+				fileid++;
+			uint32_t id = strtoul(fileid, NULL, 10);
+			//TODO: unhardcode excluded stories
+			if(id == 221463 || /*id == 234296 ||*/ id == 363931)
+				goto next;
 			void *buf = malloc(finfo.uncompressed_size);
 			if(buf == NULL) {
 				// out of memory
@@ -206,15 +217,14 @@ bool handle(const struct hdr *paramv, size_t paramc) {
 			// if metadata file is open
 			if(meta != NULL) {
 				struct extra_leaf *thismeta = (void*)meta;
-				uint8_t *tmpmeta = meta;
-				// get id
-				uint32_t id = strtoul(strrchr(fname, '-') + 1, NULL, 10);
+				off_t off = 0;
+				//uint8_t *tmpmeta = meta;
 				// find by id
-				while(thismeta && thismeta->id != id) {
-					tmpmeta += thismeta->skipbytes;
-					thismeta = (tmpmeta - meta >= metasize) ? NULL : (void*)tmpmeta;
+				while(off < metasize && thismeta->id != id) {
+					off += (off_t)thismeta->skipbytes;
+					thismeta = (void*)(meta + off);
 				}
-				if(thismeta) {
+				if(off < metasize) {
 					// found, add tags
 					char mtime[21], ctime[21];
 					int slen = snprintf(mtime, 21, "%"PRIu64, thismeta->mtime);
@@ -234,7 +244,10 @@ bool handle(const struct hdr *paramv, size_t paramc) {
 						//fuck it, crash
 						abort();
 					addParam(reply, repc, "rating", ratings[idx], strlen(ratings[idx]));
-				}
+				} else
+					// not found
+					//can't happen, worth investigation
+					abort();
 			}
 			// -- end extract metadata --
 
