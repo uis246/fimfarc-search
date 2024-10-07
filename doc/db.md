@@ -20,3 +20,10 @@ Association db. AoS with
 4. `db/fb-tag.bin` tagdb of tag names for ficbook
 5. `db/fb-author.bin` tagdb for author name on ficbook
 6. `db/fb-story.bin`
+### Groups
+```
+group
+|-[$groupid]
+  \[$parentfolderid.]$folderid.list
+```
+\*.list is text file with story id on each line
