@@ -7,6 +7,8 @@ Ficbook is a big russian-speaking fanfic website
 List of folders in group. Group name in url doesn't seem to matter.
 2. `/group/$groupid/folder/$folderid/$foldername`
 Folder or subfolder. I guess tree structure should be extracted from crawling.
+3. `/groups?page=$page`
+List of all groups. Note, that some might be hidden beghind mature.
 
 ## XML/DOM trees
 Example tree:
@@ -69,4 +71,21 @@ div data_group_id="$groupid" data-folder-id="$folderid" data-controller-id="$noi
   |       |-(not interested)
   |-div class="folder-paginator" ...
     |-(junk)
+```
+
+### Group list
+```
+div data-tab="groups" ...
+|-ul class="group-card-list"
+| |-[li]
+|   |-a href="/group/$groupid/$grname"
+|   | |-img ...
+|   | |-div class="group-name"
+|   | | \$groupname
+|   | |-(not interested)
+|   |-(not interested)
+|-div class="page_list"
+  |-ul
+    |-[li ...]
+      |-(too lazy, but it has number of pages in group list)
 ```
