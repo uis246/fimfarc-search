@@ -1,6 +1,6 @@
-# Description of ficbook structure
+# Description of fimfiction structure
 
-Ficbook is a big russian-speaking fanfic website
+Fimfiction is site full of our favorite mares and their horsewords.
 
 ## URLs
 1. `/group/$groupid/$groupname/folders`
