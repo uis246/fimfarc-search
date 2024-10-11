@@ -59,13 +59,15 @@ static const char *statuses[] = {
 
 void initHandler(int argc, char *argv[]) {(void)argc;(void)argv;}
 
-#define closeArchive() {unzClose(archive); archive = NULL; if(meta) {munmap(meta, metasize); meta = NULL;} if(tags) {munmap(tags, tagsize); tags = NULL;}}
+#define closeArchive() {unzClose(archive); archive = NULL; prev = 0; off = 0; if(meta) {munmap(meta, metasize); meta = NULL;} if(tags) {munmap(tags, tagsize); tags = NULL;}}
 
 bool handle(const struct hdr *paramv, size_t paramc) {
 	static unzFile *archive = NULL;
 	static unz_global_info info;
 	static uint8_t *meta = NULL, *tags = NULL;
 	static off_t metasize, tagsize;
+	static uint32_t prev = 0;
+	static off_t off = 0;
 
 	struct hdr reply[10];
 	size_t repc = 0;
@@ -216,15 +218,18 @@ bool handle(const struct hdr *paramv, size_t paramc) {
 			// -- extract metadata --
 			// if metadata file is open
 			if(meta != NULL) {
-				struct extra_leaf *thismeta = (void*)meta;
-				off_t off = 0;
-				//uint8_t *tmpmeta = meta;
+				// check if id in zip monotonically grows
+				// db is sorted by id
+				if(prev > id)
+					// not stonks, search from start
+					off = 0;
+				struct extra_leaf *thismeta = (void*)(meta + off);
 				// find by id
-				while(off < metasize && thismeta->id != id) {
+				while(off < metasize && thismeta->id < id) {
 					off += (off_t)thismeta->skipbytes;
 					thismeta = (void*)(meta + off);
 				}
-				if(off < metasize) {
+				if(off < metasize && thismeta->id == id) {
 					// found, add tags
 					char mtime[21], ctime[21];
 					int slen = snprintf(mtime, 21, "%"PRIu64, thismeta->mtime);
@@ -254,6 +259,7 @@ bool handle(const struct hdr *paramv, size_t paramc) {
 			ret = unzGoToNextFile(archive);
 			if(ret != UNZ_OK)
 				addParam(reply, repc, "Eofnext", NULL, 0);
+			prev = id;
 			respond(reply, repc);
 			free(buf);
 			if(ret != UNZ_OK) {
