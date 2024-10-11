@@ -59,12 +59,13 @@ static const char *statuses[] = {
 
 void initHandler(int argc, char *argv[]) {(void)argc;(void)argv;}
 
-#define closeArchive() {unzClose(archive); archive = NULL; prev = 0; off = 0; if(meta) {munmap(meta, metasize); meta = NULL;} if(tags) {munmap(tags, tagsize); tags = NULL;}}
+#define closeArchive() {unzClose(archive); archive = NULL; prev = 0; off = 0; if(meta) {munmap(meta, metasize); meta = NULL;} if(tag) {munmap(tag, tagsize); tag = NULL;}}
+#define FNAME_MAX 2048
 
 bool handle(const struct hdr *paramv, size_t paramc) {
 	static unzFile *archive = NULL;
 	static unz_global_info info;
-	static uint8_t *meta = NULL, *tags = NULL;
+	static uint8_t *meta = NULL, *tag = NULL;
 	static off_t metasize, tagsize;
 	static uint32_t prev = 0;
 	static off_t off = 0;
@@ -110,9 +111,10 @@ bool handle(const struct hdr *paramv, size_t paramc) {
 			//NOTE: assuming char is 1 byte long
 			char *metaname = strndup((char*)filename->data, filename->length + 4);
 			if(metaname) {
-				strcat(metaname, ".bin");
-				int fd = open(metaname, O_RDONLY);
-				free(metaname);
+				memcpy(metaname + filename->length, ".bin", 4);
+				int fd;
+				// open extra metadata db
+				fd = open(metaname, O_RDONLY);
 				if(fd != -1) {
 					// get size
 					struct stat sb;
@@ -123,6 +125,20 @@ bool handle(const struct hdr *paramv, size_t paramc) {
 						meta = mmap(NULL, metasize, PROT_READ, MAP_SHARED, fd, 0);
 					close(fd);
 				}
+				memcpy(metaname + filename->length, ".tag", 4);
+				// open alttag db
+				fd = open(metaname, O_RDONLY);
+				if(fd != -1) {
+					// get size
+					struct stat sb;
+					fstat(fd, &sb);
+					tagsize = sb.st_size;
+					// map
+					if(tagsize <= UINT32_MAX)
+						tag = mmap(NULL, tagsize, PROT_READ, MAP_SHARED, fd, 0);
+					close(fd);
+				}
+				free(metaname);
 			}
 			return true;
 		}
@@ -149,19 +165,19 @@ bool handle(const struct hdr *paramv, size_t paramc) {
 		}
 	}
 	unz_file_info finfo;
-	char *fname = alloca(2048);
+	char *fname = alloca(FNAME_MAX);
 	if(readnext) {
 		// next
 		// TODO: check if last already was reached
 		do {
-			ret = unzGetCurrentFileInfo(archive, &finfo, fname, 2048, NULL, 0, NULL, 0);
+			ret = unzGetCurrentFileInfo(archive, &finfo, fname, FNAME_MAX, NULL, 0, NULL, 0);
 			if(ret != UNZ_OK)
 				// damaged archive?
 				// document error
 				goto docerror;
 			// check against filename filter
 			size_t len = strlen(fname);
-			assert(len < 2048);
+			assert(len < FNAME_MAX);
 			if(fname[len - 1] == '/')
 				// skip dirs
 				goto next;
@@ -230,7 +246,7 @@ bool handle(const struct hdr *paramv, size_t paramc) {
 					thismeta = (void*)(meta + off);
 				}
 				if(off < metasize && thismeta->id == id) {
-					// found, add tags
+					// found, add metadata
 					char mtime[21], ctime[21];
 					int slen = snprintf(mtime, 21, "%"PRIu64, thismeta->mtime);
 					if(slen >= 0)
@@ -249,6 +265,34 @@ bool handle(const struct hdr *paramv, size_t paramc) {
 						//fuck it, crash
 						abort();
 					addParam(reply, repc, "rating", ratings[idx], strlen(ratings[idx]));
+					// add tags
+					char *tags_list = alloca(1024);
+					uint32_t *sorted_tags = alloca(thismeta->tagsz);
+					memcpy(sorted_tags, meta + off + EXL_SIZE + thismeta->ldlen + thismeta->sdlen, thismeta->tagsz);
+					uint_fast16_t count = thismeta->tagsz/sizeof(uint32_t), bufused = 0;
+					qsort(sorted_tags, count, sizeof(uint32_t), id_sort);
+					for(size_t off = 0, i = 0; off < tagsize && i < count;) {
+						const struct id_text_file *itf = (struct id_text_file*)(tag + off);
+						if(itf->id == sorted_tags[i]) {
+							// now add tag for real
+							if(bufused + 1 > 1024)
+								abort();
+							memcpy(tags_list + bufused, itf->data, itf->length);
+							tags_list[bufused + itf->length] = ' ';
+							bufused += itf->length + 1;
+							i++;
+						} else if(itf->id < sorted_tags[i]) {
+							// not there yet
+						} else if(itf->id > sorted_tags[i]) {
+							// too far, tag not found in db
+							i++;
+							continue;
+						}
+						off += ITF_SIZE + itf->length;
+					}
+					if(bufused != 0)
+						addParam(reply, repc, "keywords", tags_list, bufused - 1);
+					//TODO: add long describrion as annotation and short as abstract?
 				} else
 					// not found
 					//can't happen, worth investigation
@@ -285,7 +329,7 @@ bool handle(const struct hdr *paramv, size_t paramc) {
 		closeArchive();
 		return true;
 	} else {
-		ret = unzGetCurrentFileInfo(archive, &finfo, fname, 2048, NULL, 0, NULL, 0);
+		ret = unzGetCurrentFileInfo(archive, &finfo, fname, FNAME_MAX, NULL, 0, NULL, 0);
 		if(ret != UNZ_OK)
 			// damaged archive?
 			// NOTE: maybe just report file error?
