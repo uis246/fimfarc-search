@@ -89,3 +89,25 @@ div data-tab="groups" ...
     |-[li ...]
       |-(too lazy, but it has number of pages in group list)
 ```
+
+## EPUB description injection
+The goal here is to inject long describtion into epub file, that was stripped by fimfarchive.
+
+Since epubs will no longer be same as fimfarchive's ask about possibly better layout of files.
+
+### HTML generation
+TODO, see fimfic's epubs
+
+### OPF modification
+In content.opf inject `item` tag inside of `metadata`
+
+After line `<metadata>` add line `    <item id="title" href="title.html" media-type="application/xhtml+xml"/>`
+### NCX modification
+In toc.ncx inject `navPoint` tree into `navMap`
+
+```
+navPoint id="title" playOrder="0"
+|-navLabel
+  |-text
+    \Title
+```
