@@ -16,7 +16,7 @@ New search uses power of existing search engine [Xapian](https://xapian.org) wra
 Using new search requires more additional steps and preparatory time, but results faster full-text search.
 1. Install recoll of at least version 1.40.2 or latest git if it hasn't been released yet
 2. Compile `rclfimf` in `recoll/` by executing `gcc -lminizip -O2 -o rclfimf rclfimf.c -I ../src/ rclcommon.c ../src/utils.c`
-3. Use example configs in `recoll/` to configure your recoll, move fimfarchive to empty directory
+3. Use example configs in `recoll/config` to configure your recoll, move fimfarchive to empty directory
 4. Copy `db/extra.bin` into that directory as archive and name it same, but with .zip replaced to .bin
 5. Do step 4 for `db/alttag.bin` and extension .tag
 6. Index with `recollindex`
