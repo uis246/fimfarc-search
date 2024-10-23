@@ -48,7 +48,12 @@ mkdir -p group/root
 if ! [ -f "group/root/.scraped" ]; then
 	rm "$tmpfile"
 	touch "$tmpfile"
+	rm -f "group/group-names"
 	for i in $(seq 1 $count); do
+		while read -r line; do
+			id=$(echo "$line" | hxselect 'a::attr(href)' -c | awk '{print $3}' 'FS=/')
+			echo "$id \"$(echo "$line" | hxselect 'a::attr(title)' -c)\"" >> "group/group-names"
+		done < <(hxnormalize -x -i 0 -l 1024 < "group/list/$i" | hxselect ul.group-card-list div.group-name a -s '\n')
 		for j in $(hxnormalize -x -i 0 < "group/list/$i" | hxselect ul.group-card-list div.group-name 'a::attr(href)' -c -s '\n' | awk '{print $3}' 'FS=/'); do
 			if ! [ -f "group/root/$j" ] && [ "$j" -ne "205729" ]; then
 				printf "url=https://www.fimfiction.net/group/$j/noname/folders\noutput=group/root/$j\n" >> "$tmpfile"
@@ -69,11 +74,17 @@ if ! [ -f "group/folder/.seeded" ]; then
 	rm "$tmpfile"
 	touch "$tmpfile"
 	if ! [ -f "group/folder/.folders" ]; then
+	rm -f group/folder/.names
 	for f in group/root/*; do
 		gid="$(echo "$f" | awk '{print $3}' 'FS=/')"
-		for id in $(hxnormalize -x -i 0 < $f | hxselect div.folder_list tbody td a -s '\n' | hxremove a.folder | hxselect -c 'a::attr(href)' -s '\n' | awk '{print $5}' 'FS=/'); do
-			printf "$gid $id 0\n" >> "group/folder/.folders"
-		done
+		prepared="$(hxnormalize -x -i 0 -l 1024 < $f | hxselect div.folder_list tbody td a -s '\n' | hxremove a.folder | tr -s '\n')"
+		if [ "$prepared" != "" ]; then
+			while read -r line; do
+				id=$(echo "$line" | hxselect 'a::attr(href)' -c | awk '{print $5}' 'FS=/')
+				echo "$id \"$(echo "$line" | hxselect a -c)\"" >> group/folder/.names
+				printf "$gid $id 0\n" >> "group/folder/.folders"
+			done < <(echo "$prepared")
+		fi
 	done
 	fi
 	while read -r gid id; do
@@ -96,15 +107,21 @@ function subflist() {
 	mkdir -p $2
 	if ! [ -f "$2/.scraped" ]; then
 		if ! [ -f "$2/.folders" ]; then
-			rm -f "$1/.pages"
+			rm -f "$1/.pages" "$2/.names"
 			for f in $1/*; do
-				norm="$(hxnormalize -x -i 0 < $f)"
+				norm="$(hxnormalize -x -i 0 -l 2048 < $f)"
 				tmp="$(echo "$f" | awk '{print $3}' 'FS=/')"
 				gid="$(echo "$tmp" | awk '{print $1}' 'FS=.')"
 				parent="$(echo "$tmp" | awk '{print $2}' 'FS=.')"
-				for id in $(echo "$norm" | hxselect div.folder_list tbody td a -s '\n' | hxremove a.folder | hxselect -c 'a::attr(href)' -s '\n' | awk '{print $5}' 'FS=/'); do
-					printf "$gid $id $parent\n" >> "$2/.folders"
-				done
+				if [ "$prepared" != "" && "$id" != "" ]; then
+				while read -r line; do
+					id=$(echo "$line" | hxselect 'a::attr(href)' -c | awk '{print $3}' 'FS=/')
+					if [ "$id" != "" ]; then
+						printf "$gid $id $parent\n" >> "$2/.folders"
+						echo "$id \"$(echo "$line" | hxselect a -c)\"" >> "$2/.names"
+					fi
+				done < <(echo "$norm" | hxselect div.folder_list tbody td a -s '\n' | hxremove a.folder | tr -s '\n')
+				fi
 				num="$(echo "$norm" | hxselect div.page_list 'a::attr(href)' -c -s '\n' | awk '{max = $2 > max ? $2 : max} END {print max}' 'FS==')"
 				if [ "$num" != "" ]; then
 					echo "$gid $parent $num" >> "$1/.pages"
