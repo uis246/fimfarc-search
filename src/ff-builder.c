@@ -349,5 +349,12 @@ void builder() {
 	qsort(tagbuf.data, milestone, sizeof(tag), tag_sort);
 	qsort(alttagbuf.data, milestone, sizeof(tag), tag_sort);
 	writeAndFreeTags(tag_bin, &tagbuf);
+	fclose(story_bin);
+	fclose(tag_bin);
+	fclose(assoc_bin);
+	#if BUILD_EXTRA
 	writeAndFreeTags(alttag_bin, &alttagbuf);
+	fclose(extra_bin);
+	fclose(alttag_bin);
+	#endif
 }
