@@ -29,15 +29,18 @@ else
 	exit -1
 fi
 
-#Prepare download list
-tmpfile="$(mktemp)"
-for i in $(seq 2 $count); do
-	printf "url=https://www.fimfiction.net/groups?page=$i\noutput=group/list/$i\n" >> "$tmpfile"
-done
+tmpfile="$(mktemp -d)"
 
 #Scrape group list
 if ! [ -f "group/list/.scraped" ]; then
-	curlget "-f --fail-early --remove-on-error -Z --rate 40/m --parallel-max 6 -K $tmpfile"
+	#Prepare download list
+	for i in $(seq 2 $count); do
+		printf "url=https://www.fimfiction.net/groups?page=$i\noutput=group/list/$i\n" >> "$tmpfile/1"
+	done
+	curlget "-f --fail-early --remove-on-error -Z --rate 40/m --parallel-max 6 -K $tmpfile/1"
+	if [ $? -ne 0 ]; then
+		exit -1
+	fi
 	touch group/list/.scraped
 else
 	echo Group list skipped
@@ -45,24 +48,31 @@ fi
 
 #Extract group ids
 mkdir -p group/root
-if ! [ -f "group/root/.scraped" ]; then
-	rm "$tmpfile"
-	touch "$tmpfile"
-	rm -f "group/group-names"
+if ! [ -f "group/group-names" ]; then
+	#rm -f "group/group-names"
 	for i in $(seq 1 $count); do
 		while read -r line; do
 			id=$(echo "$line" | hxselect 'a::attr(href)' -c | awk '{print $3}' 'FS=/')
 			echo "$id \"$(echo "$line" | hxselect 'a::attr(title)' -c)\"" >> "group/group-names"
 		done < <(hxnormalize -x -i 0 -l 1024 < "group/list/$i" | hxselect ul.group-card-list div.group-name a -s '\n')
+	done
+fi
+if ! [ -f "group/root/.scraped" ]; then
+	#rm "$tmpfile"
+	#touch "$tmpfile/2"
+	for i in $(seq 1 $count); do
 		for j in $(hxnormalize -x -i 0 < "group/list/$i" | hxselect ul.group-card-list div.group-name 'a::attr(href)' -c -s '\n' | awk '{print $3}' 'FS=/'); do
-			if ! [ -f "group/root/$j" ] && [ "$j" -ne "205729" ]; then
-				printf "url=https://www.fimfiction.net/group/$j/noname/folders\noutput=group/root/$j\n" >> "$tmpfile"
+			if ! [ -f "group/root/$j" ] && [ "$j" -ne "205729" ] && [ "$j" -ne "206283" ]; then
+				printf "url=https://www.fimfiction.net/group/$j/noname/folders\noutput=group/root/$j\n" >> "$tmpfile/2"
 			fi
 		done
 		#hxnormalize -x -i 0 < group/list/$i | hxselect ul.group-card-list div.group-name 'a::attr(href)' -c -s '\n' | awk '{print "url=https://fimfiction.net"$0"/folders\noutput=group/root/"$3}' 'FS=/' >> "$tmpfile"
 	done
-	curlget "-f --fail-early --remove-on-error --rate 50/m -Z --parallel-max 10 -K $tmpfile"
-	#curlget "-f --fail-early --remove-on-error --rate 50/m -v -K $tmpfile"
+	curlget "-f --fail-early --remove-on-error --rate 40/m -Z --parallel-max 10 -K $tmpfile/2"
+	#curlget "-f --fail-early --remove-on-error --rate 40/m -v -K $tmpfile/2"
+	if [ $? -ne 0 ]; then
+		exit -1
+	fi
 	touch group/root/.scraped
 else
 	echo Root folders skipped
@@ -70,29 +80,35 @@ fi
 
 #Extract(seed) folders
 mkdir -p group/folder
-if ! [ -f "group/folder/.seeded" ]; then
-	rm "$tmpfile"
-	touch "$tmpfile"
+if ! [ -f "group/folder/.scraped" ]; then
+	#rm "$tmpfile"
+	touch "$tmpfile/3"
 	if ! [ -f "group/folder/.folders" ]; then
 	rm -f group/folder/.names
 	for f in group/root/*; do
-		gid="$(echo "$f" | awk '{print $3}' 'FS=/')"
-		prepared="$(hxnormalize -x -i 0 -l 1024 < $f | hxselect div.folder_list tbody td a -s '\n' | hxremove a.folder | tr -s '\n')"
+		#gid="$(echo "$f" | awk '{print $3}' 'FS=/')"
+		prepared="$(hxnormalize -x -i 0 -l 2048 < $f | hxselect div.folder_list tbody td a -s '\n' | hxremove a.folder | tr -s '\n')"
+		#ids="$()"
 		if [ "$prepared" != "" ]; then
 			while read -r line; do
 				id=$(echo "$line" | hxselect 'a::attr(href)' -c | awk '{print $5}' 'FS=/')
 				echo "$id \"$(echo "$line" | hxselect a -c)\"" >> group/folder/.names
-				printf "$gid $id 0\n" >> "group/folder/.folders"
-			done < <(echo "$prepared")
+				printf "${f:11} $id 0\n" >> "group/folder/.folders"
+			done <<< "$prepared"
 		fi
 	done
 	fi
-	while read -r gid id; do
+	while read -r gid id parent; do
 		if ! [ -f "group/folder/$gid.$id" ]; then
-			printf "url=https://www.fimfiction.net/group/$gid/folder/$id/\noutput=group/folder/$gid.$id\n" >> "$tmpfile"
+			printf "url=https://www.fimfiction.net/group/$gid/folder/$id/\noutput=group/folder/$gid.$id\n" >> "$tmpfile/3"
 		fi
 	done < "group/folder/.folders"
-	curlget "-f --fail-early --remove-on-error --rate 55/m -Z --parallel-max 10 -K $tmpfile"
+	curlget "-f --fail-early --remove-on-error --rate 40/m -Z --parallel-max 10 -K $tmpfile/3"
+	#curlget "-f --fail-early --remove-on-error --rate 40/m -v -K $tmpfile/3"
+	if [ $? -ne 0 ]; then
+		exit -1
+	fi
+	touch "group/folder/.scraped"
 else
 	echo Skipped seeding
 fi
@@ -102,10 +118,10 @@ fi
 function subflist() {
 	#$1 - in
 	#$2 - out
-	rm "$tmpfile"
-	touch "$tmpfile"
 	mkdir -p $2
 	if ! [ -f "$2/.scraped" ]; then
+		rm -f "$tmpfile/4"
+		touch "$tmpfile/4"
 		if ! [ -f "$2/.folders" ]; then
 			rm -f "$1/.pages" "$2/.names"
 			for f in $1/*; do
@@ -113,14 +129,15 @@ function subflist() {
 				tmp="$(echo "$f" | awk '{print $3}' 'FS=/')"
 				gid="$(echo "$tmp" | awk '{print $1}' 'FS=.')"
 				parent="$(echo "$tmp" | awk '{print $2}' 'FS=.')"
-				if [ "$prepared" != "" && "$id" != "" ]; then
+				prepared="$(hxselect div.folder_list tbody td a -s '\n' <<< "$norm" | hxremove a.folder | tr -s '\n')"
+				if [ "$prepared" != "" ]; then
 				while read -r line; do
-					id=$(echo "$line" | hxselect 'a::attr(href)' -c | awk '{print $3}' 'FS=/')
+					id=$(echo "$line" | hxselect 'a::attr(href)' -c | awk '{print $5}' 'FS=/')
 					if [ "$id" != "" ]; then
 						printf "$gid $id $parent\n" >> "$2/.folders"
 						echo "$id \"$(echo "$line" | hxselect a -c)\"" >> "$2/.names"
 					fi
-				done < <(echo "$norm" | hxselect div.folder_list tbody td a -s '\n' | hxremove a.folder | tr -s '\n')
+				done <<< "$prepared"
 				fi
 				num="$(echo "$norm" | hxselect div.page_list 'a::attr(href)' -c -s '\n' | awk '{max = $2 > max ? $2 : max} END {print max}' 'FS==')"
 				if [ "$num" != "" ]; then
@@ -130,10 +147,10 @@ function subflist() {
 		fi
 		while read -r gid id parent; do
 			if ! [ -f "$2/$gid.$id" ]; then
-				printf "url=https://www.fimfiction.net/group/$gid/folder/$id/\noutput=$2/$gid.$id\n" >> "$tmpfile"
+				printf "url=https://www.fimfiction.net/group/$gid/folder/$id/\noutput=$2/$gid.$id\n" >> "$tmpfile/4"
 			fi
 		done < "$2/.folders"
-		curlget "-f --fail-early --remove-on-error --rate 55/m -Z --parallel-max 10 -K $tmpfile"
+		curlget "-f --fail-early --remove-on-error --rate 45/m -Z --parallel-max 10 -K $tmpfile/4"
 		ret=$?
 		if [ $ret -eq 0 ]; then
 			touch "$2/.scraped"
@@ -152,24 +169,26 @@ subflist group/folder-2 group/folder-3
 subflist group/folder-3 group/folder-4
 subflist group/folder-4 group/folder-5
 subflist group/folder-5 group/folder-6
-subflist group/folder-6 group/folder-7
+#uncomment for -6 names and pages
+#subflist group/folder-6 group/folder-7
 
 #Download pages
 function pagesdl() {
 	#$1 - in
 	#$2 - out
-	rm "$tmpfile"
-	touch "$tmpfile"
+	rm -f "$tmpfile/5"
+	touch "$tmpfile/5"
 	mkdir -p $2
 	if ! [ -f "$2/.scraped" ]; then
 		while read -r gid id num; do
 			for i in $(seq 2 $num); do
 				if ! [ -f "$2/$gid.$id.$i" ]; then
-					printf "url=https://www.fimfiction.net/group/$gid/folder/$id/?page=$i\noutput=$2/$gid.$id.$i\n" >> "$tmpfile"
+					printf "url=https://www.fimfiction.net/group/$gid/folder/$id/?page=$i\noutput=$2/$gid.$id.$i\n" >> "$tmpfile/5"
 				fi
 			done
 		done < "$1/.pages"
-		curlget "-f --fail-early --remove-on-error --rate 50/m -Z --parallel-max 30 -K $tmpfile"
+		curlget "-f --fail-early --remove-on-error --rate 50/m -Z --parallel-immediate --parallel-max 2 -K $tmpfile/5"
+		#curlget "-f --fail-early --remove-on-error --rate 50/m -v -K $tmpfile/5"
 		if [ $? -eq 0 ]; then
 			touch "$2/.scraped"
 		fi
@@ -184,7 +203,8 @@ pagesdl group/folder-3 group/folder-page-3
 pagesdl group/folder-4 group/folder-page-4
 pagesdl group/folder-5 group/folder-page-5
 #-6 are singlepaged for now
-rm "$tmpfile"
+rm -r "$tmpfile"
+#exit 0
 
 #Extract ids
 function pagesparse() {
@@ -195,7 +215,7 @@ function pagesparse() {
 	if ! [ -f "$2/.scraped" ]; then
 		rm -r $2
 		mkdir -p $2
-		cp $1/.folders $2/
+		cp $1/.folders $1/.names $2/
 		#First page
 		while read -r gid id parent; do
 			touch $2/$id
