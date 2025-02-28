@@ -14,8 +14,9 @@
 
 [prefixes]
 #dctime = XYdctime ; noterms = 1 ; pfxonly = 1
-status = XYcomp ; noterms = 1 ; pfxonly = 1
-rating = XYrate ; noterms = 1 ; pfxonly = 1
+status = XYc ; noterms = 1 ; pfxonly = 1
+rating = XYr ; noterms = 1 ; pfxonly = 1
+folder = XYf ; noterms = 1 ; pfxonly = 1
 mtype =
 filename =
 containerfilename =

@@ -65,10 +65,10 @@ void initHandler(int argc, char *argv[]) {(void)argc;(void)argv;}
 bool handle(const struct hdr *paramv, size_t paramc) {
 	static unzFile *archive = NULL;
 	static unz_global_info info;
-	static uint8_t *meta = NULL, *tag = NULL;
-	static off_t metasize, tagsize;
+	static uint8_t *meta = NULL, *tag = NULL, *grp = NULL;
+	static off_t metasize, tagsize, grpsize/*grpsize in u32*/;
 	static uint32_t prev = 0;
-	static off_t off = 0;
+	static off_t off = 0, grpoff = 0;
 
 	struct hdr reply[10];
 	size_t repc = 0;
@@ -109,9 +109,10 @@ bool handle(const struct hdr *paramv, size_t paramc) {
 			// self doc is only returned during indexing. I think.
 			// open metadata file
 			//NOTE: assuming char is 1 byte long
-			char *metaname = strndup((char*)filename->data, filename->length + 4);
+			char *metaname = alloca(filename->length + 5);
+			memcpy(metaname, filename->data, filename->length);
 			if(metaname) {
-				memcpy(metaname + filename->length, ".bin", 4);
+				memcpy(metaname + filename->length, ".bin", 5);
 				int fd;
 				// open extra metadata db
 				fd = open(metaname, O_RDONLY);
@@ -138,7 +139,21 @@ bool handle(const struct hdr *paramv, size_t paramc) {
 						tag = mmap(NULL, tagsize, PROT_READ, MAP_SHARED, fd, 0);
 					close(fd);
 				}
-				free(metaname);
+				memcpy(metaname + filename->length, ".grp", 4);
+				// open groupassoc db
+				fd = open(metaname, O_RDONLY);
+				if(fd != -1) {
+					// get size
+					struct stat sb;
+					fstat(fd, &sb);
+					grpsize = sb.st_size;
+					// map
+					if(grpsize <= UINT32_MAX)
+						grp = mmap(NULL, grpsize, PROT_READ, MAP_SHARED, fd, 0);
+					grpsize /= sizeof(uint32_t);
+					close(fd);
+				}
+				//free(metaname);
 			}
 			return true;
 		}
@@ -236,9 +251,11 @@ bool handle(const struct hdr *paramv, size_t paramc) {
 			if(meta != NULL) {
 				// check if id in zip monotonically grows
 				// db is sorted by id
-				if(prev > id)
+				if(prev > id) {
 					// not stonks, search from start
 					off = 0;
+					grpoff = 0;
+				}
 				struct extra_leaf *thismeta = (void*)(meta + off);
 				// find by id
 				while(off < metasize && thismeta->id < id) {
@@ -271,7 +288,8 @@ bool handle(const struct hdr *paramv, size_t paramc) {
 					memcpy(sorted_tags, meta + off + EXL_SIZE + thismeta->ldlen + thismeta->sdlen, thismeta->tagsz);
 					uint_fast16_t count = thismeta->tagsz/sizeof(uint32_t), bufused = 0;
 					qsort(sorted_tags, count, sizeof(uint32_t), id_sort);
-					for(size_t off = 0, i = 0; off < tagsize && i < count;) {
+					//Add tags
+					for(size_t off = 0, i = 0; off < (size_t)tagsize && i < count;) {
 						const struct id_text_file *itf = (struct id_text_file*)(tag + off);
 						if(itf->id == sorted_tags[i]) {
 							// now add tag for real
@@ -292,6 +310,29 @@ bool handle(const struct hdr *paramv, size_t paramc) {
 					}
 					if(bufused != 0)
 						addParam(reply, repc, "keywords", tags_list, bufused - 1);
+					//Add groups
+					if(grp != NULL) {
+						uint32_t *grp_kv = (uint32_t*)grp;
+						// find by id
+						while(grpoff < grpsize && *(grp_kv + grpoff) < id)
+							grpoff += 2;
+
+						#define groups_list_size 2048
+						char *groups_list = alloca(groups_list_size);
+						bufused = 0;
+						while(grpoff < grpsize - 1 && *(grp_kv + grpoff) == id) {
+							bufused += snprintf(groups_list + bufused, groups_list_size - bufused, "%d ", *(grp_kv + grpoff + 1));
+							if(bufused >= groups_list_size) {
+								//story is in too many folders, probably trolling campaign
+								// pretend there are no folders
+								bufused = 0;
+								break;
+							}
+							grpoff += 2;
+						}
+						if(bufused != 0)
+							addParam(reply, repc, "folder", groups_list, bufused - 1);
+					}
 					//TODO: add long describrion as annotation and short as abstract?
 				} else
 					// not found
@@ -300,6 +341,7 @@ bool handle(const struct hdr *paramv, size_t paramc) {
 			}
 			// -- end extract metadata --
 
+			//TODO: iterate until next epub, recoll doesn't like eofnow
 			ret = unzGoToNextFile(archive);
 			if(ret != UNZ_OK)
 				addParam(reply, repc, "Eofnext", NULL, 0);
